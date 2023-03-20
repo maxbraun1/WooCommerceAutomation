@@ -305,24 +305,26 @@ async function checkAllListings(){
   for(let i = 0; i < listings.length; i++){
     let listing = await getListing(listings[i]).catch((error) => {console.log(error)});
 
-    let lipseysResults = await LipseysInventory.find(item => item.upc == listing.upc);
-    let RSRResults = await RSRInventory.find(item => item.upc == listing.upc);
-    let davidsonsResults = await DavidsonsInventory.find(item => item.upc == listing.upc);
-    if(lipseysResults == undefined){lipseysResults={};lipseysResults.quantity = 0}
-    if(RSRResults == undefined){RSRResults={};RSRResults.quantity = 0}
-    if(davidsonsResults == undefined){davidsonsResults={};davidsonsResults.quantity = 0}
+    if(listing){
+      let lipseysResults = await LipseysInventory.find(item => item.upc == listing.upc);
+      let RSRResults = await RSRInventory.find(item => item.upc == listing.upc);
+      let davidsonsResults = await DavidsonsInventory.find(item => item.upc == listing.upc);
+      if(lipseysResults == undefined){lipseysResults={};lipseysResults.quantity = 0}
+      if(RSRResults == undefined){RSRResults={};RSRResults.quantity = 0}
+      if(davidsonsResults == undefined){davidsonsResults={};davidsonsResults.quantity = 0}
 
-    let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity;
+      let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity;
 
-    if(listing.quantity > totalAvailableQuantity){
-      if(listing.upc){
-        potentialDeletes.push(listing.upc);
+      if(listing.quantity > totalAvailableQuantity){
+        if(listing.upc){
+          potentialDeletes.push(listing.upc);
 
-        console.log(chalk.bold.bgYellow.black("--- Potential Delete ---"));
-        console.log(chalk.red.bold(listing.upc + " (" +listing.quantity + " listed)"));
-        console.log(chalk.bold.white(lipseysResults.quantity + " listed on Lipseys"));
-        console.log(chalk.bold.white(davidsonsResults.quantity + " listed on Davidsons"));
-        console.log(chalk.bold.white(RSRResults.quantity + " listed on RSR"));
+          console.log(chalk.bold.bgYellow.black("--- Potential Delete ---"));
+          console.log(chalk.red.bold(listing.upc + " (" +listing.quantity + " listed)"));
+          console.log(chalk.bold.white(lipseysResults.quantity + " listed on Lipseys"));
+          console.log(chalk.bold.white(davidsonsResults.quantity + " listed on Davidsons"));
+          console.log(chalk.bold.white(RSRResults.quantity + " listed on RSR"));
+        }
       }
     }
   }
@@ -354,5 +356,5 @@ async function postAll(){
 }
 
 // START
-postAll();
-//checkAllListings();
+//postAll();
+checkAllListings();
