@@ -7,7 +7,7 @@ import csvToJson from 'convert-csv-to-json';
 import { postLipseysProducts } from './listLipseys/index.js';
 import { postDavidsonsProducts } from './listDavidsons/index.js';
 import { postRSRProducts } from './listRSR/index.js';
-import { getInventory } from './listSportsSouth/index.js';
+import { postSSProducts } from './listSportsSouth/index.js';
 
 dotenv.config();
 
@@ -357,4 +357,5 @@ async function postAll(){
 
 // START
 //postAll();
-checkAllListings();
+//checkAllListings();
+postSSProducts();

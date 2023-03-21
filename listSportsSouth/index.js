@@ -4,43 +4,144 @@ import * as dotenv from 'dotenv';
 import descriptionGenerator from './descriptionGenerator.js';
 import { generateImages } from '../imageGenerator.js';
 import chalk from 'chalk';
-import * as ftp from 'basic-ftp';
-import csvToJson from 'convert-csv-to-json/src/csvToJson.js';
 import { logProcess } from '../index.js';
 import { GunBrokerAccessToken } from '../index.js';
 import { currentUserID } from '../index.js';
 import { checkAlreadyPosted  } from '../index.js';
+import { xml2js } from 'xml-js';
+import decodeHtml from 'decode-html';
+import util from 'util';
 
 dotenv.config();
 
 async function getInventory(){
   return new Promise(async (resolve,reject) => {
-    logProcess("Retrieving Sports South Inventory...");
-    await axios.get('http://webservices.theshootingwarehouse.com/smart/inventory.asmx/DailyItemUpdate?CustomerNumber='+process.env.SS_ACCOUNT_NUMBER+'&UserName='+process.env.SS_USERNAME+'&Password='+process.env.SS_PASSWORD+'&LastUpdate=1/1/1990&LastItem=-1&Source=string%20HTTP/1.1', {
+    await axios.get('http://webservices.theshootingwarehouse.com/smart/inventory.asmx/DailyItemUpdate?CustomerNumber='+process.env.SS_ACCOUNT_NUMBER+'&UserName='+process.env.SS_USERNAME+'&Password='+process.env.SS_PASSWORD+'&Source='+process.env.SS_SOURCE+'&LastUpdate=1/1/1990&LastItem=1', {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
+        'Content-Type': 'application/x-www-form-urlencoded',
+        responseType: 'document',
+        Accept: 'application/xml'
       }
     }).then(function (response) {
-      console.log(response.data);
-      //resolve(response.data.data);
+      let decoded = decodeHtml(response.data);
+      let xml = xml2js(decoded, {compact:true, spaces: 2});
+      //console.log(xml.string.NewDataSet.Table);
+      resolve(xml.string.NewDataSet.Table);
     }).catch(function (error) {
-      console.log(error);
-      //reject(error);
+      //console.log(error);
+      reject(error);
     });
+  });
+}
+
+function formatInventory(data){
+  return new Promise(async (resolve,reject) => {
+
+    // Get Manufacturers
+    let manufacturers = {};
+    await axios.get('http://webservices.theshootingwarehouse.com/smart/inventory.asmx/ManufacturerUpdate?CustomerNumber='+process.env.SS_ACCOUNT_NUMBER+'&UserName='+process.env.SS_USERNAME+'&Password='+process.env.SS_PASSWORD+'&Source=-1', {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        responseType: 'document',
+        Accept: 'application/xml'
+      }
+    }).then(function (response) {
+      let decoded = decodeHtml(response.data);
+      let xml = xml2js(decoded, {compact:true, spaces: 2});
+      let manufacturersUnformated = xml.string.NewDataSet.Table;
+      manufacturersUnformated.map((item) => {
+        manufacturers[item.MFGNO._text] = item.MFGNM._text.trimEnd();
+      });
+    }).catch(function (error) {
+      reject(error);
+    });
+
+    // Get Categories
+    let categories = {};
+    await axios.get('http://webservices.theshootingwarehouse.com/smart/inventory.asmx/CategoryUpdate?CustomerNumber='+process.env.SS_ACCOUNT_NUMBER+'&UserName='+process.env.SS_USERNAME+'&Password='+process.env.SS_PASSWORD+'&Source=-1', {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        responseType: 'document',
+        Accept: 'application/xml'
+      }
+    }).then(function (response) {
+      let decoded = decodeHtml(response.data);
+      let xml = xml2js(decoded, {compact:true, spaces: 2});
+      let categoriesUnformated = xml.string.NewDataSet.Table;
+      categoriesUnformated.map((item) => {
+        categories[item.CATID._text] = item.CATDES._text.trimEnd();
+      });
+    }).catch(function (error) {
+      reject(error);
+    });
+
+    let formatted = [];
+    data.map( async (item) => {
+      if(parseInt(item.ITYPE._text) == 1 || parseInt(item.ITYPE._text) == 2){
+        if(categories[item.CATID._text] != 'LOWERS' && categories[item.CATID._text] != 'SPECIALTY'){
+          //console.log(item);
+          let newItem = {};
+          newItem.upc = parseInt(item.ITUPC._text);
+          newItem.price = Number(item.CPRC._text);
+          newItem.quantity = parseInt(item.QTYOH._text);
+          newItem.map = Number(item.MFPRC._text);
+          newItem.desc = item.SHDESC._text.trimEnd();
+          newItem.type = parseInt(item.ITYPE._text);
+          newItem.model = item.IMODEL._text.trimEnd();
+          newItem.manufacturer = manufacturers[item.IMFGNO._text];
+          newItem.img = "https://media.server.theshootingwarehouse.com/large/"+item.PICREF._text+".jpg";
+          newItem.category = await categories[item.CATID._text];
+          newItem.mfgPartNumber = item.MFGINO._text.trimEnd();
+
+          // Normalize Categories
+          if(newItem.category.trimEnd() == 'RIFLES CENTERFIRE TACTICAL' || newItem.category.trimEnd() == 'RIFLES CENTERFIRE'){
+            newItem.category == 'RIFLES';
+          }else if(newItem.category.trimEnd() == 'SHOTGUNS TACTICAL'){
+            newItem.category == 'SHOTGUNS';
+          }
+
+          // Attributes listed differently for pistols vs rifles
+          if(parseInt(item.ITYPE._text) == 1){
+            // if pistol
+            newItem.capacity = item.ITATR5._text.trimEnd();
+            newItem.caliber = item.ITATR3._text.trimEnd();
+            newItem.action = item.ITATR2._text.trimEnd();
+          }else{
+            // if long-gun
+            newItem.capactiy = item.ITATR4._text.trimEnd();
+            newItem.caliber = item.ITATR2._text.trimEnd();
+            newItem.action = item.ITATR1._text.trimEnd();
+          }
+
+          formatted.push(newItem);
+        }
+      }
+    });
+
+    console.log(formatted);
+
+    let actions = [];
+    //console.log(formatted);
+    formatted.map((item) => {
+      //console.log(item);
+      if(!actions.includes(item.action)){
+        actions.push(item.action);
+      }
+    });
+    //console.log(actions);
+    //resolve(formatted);
   });
 }
 
 function filterInventory(inventory){
   logProcess("Filtering Results...");
-  let lowestQuantityAllowed = 5;
+  let lowestQuantityAllowed = 20;
   let lowestPriceAllowed = 150;
   let highestPriceAllowed = 2000;
-  let typesAllowed = ['Pistol: Semi-Auto','Pistol','Rifle: Semi-Auto','Rifle: Bolt Action','Rifle: Lever Action','Rifle: Pump Action','Rifle','Revolver','Shotgun: Pump Action',
-  'Shotgun: Over and Under','Shotgun: Semi-Auto','Shotgun: Lever Action','Shotgun: Single Shot','Shotgun: Bolt Action','Shotgun: Side by Side'];
   let filtered = [];
   
   inventory.map( async (item) => {
-    if(item.Quantity >= lowestQuantityAllowed && typesAllowed.includes(item.GunType) && item.DealerPrice > lowestPriceAllowed && item.DealerPrice < highestPriceAllowed && item.UPCCode.toString().length == 12){
+    if(item.quantity >= lowestQuantityAllowed && item.price > lowestPriceAllowed && item.price < highestPriceAllowed && item.upc.length == 12){
       filtered.push(item);
     }
   });
@@ -58,76 +159,75 @@ function postOnGunBroker(item){
       // Setting Quantity
       let quantity;
       
-      if(item.Quantity >= 20){ quantity = 5 } else
-      if(item.Quantity < 20){ quantity = 2 }
-      else{ quantity = 0 };
+      if(item.Quantity >= 20){ quantity = 1 }else{ quantity = 0 }
 
       // Setting Price
       let price;
       // Davidsons doesnt provide a MAP price
 
-      let cost = item.DealerPrice;
-      let retail = item.RetailPrice; 
+      let cost = item.price;
+      let map = item.map;
 
       price = cost * 1.15; // set price to cost of gun plus 15% then round to 2 decimals
       price = (Math.round(price * 100) / 100).toFixed(2);
 
-      if(price < retail){ // if new price is lower than map, set price to map
-        price = retail;
+      if(price < map){ // if new price is lower than map, set price to map
+        price = map;
       }
       
       // Setting Category IDs and Shipping Prices
       let categoryID;
       let ShippingPrice = 30;
 
-      switch(item.GunType) {
-        case 'Pistol: Semi-Auto':
+      let categories = ['RIFLES CENTERFIRE TACTICAL','REVOLVERS','RIFLES CENTERFIRE','PISTOLS','SHOTGUNS','SHOTGUNS TACTICAL'];
+      
+
+      switch(item.type) {
+        case 'Semi-Auto Pistol':
           ShippingPrice = 29;
           categoryID = 3026;
           break;
-        case 'Pistol':
-          ShippingPrice = 29;
-          categoryID = 3027;
-          break;
-        case 'Rifle: Semi-Auto':
-          categoryID = 3024;
-          break;
-        case 'Rifle: Bolt Action':
-          categoryID = 3022;
-          break;
-        case 'Rifle: Lever Action':
-          categoryID = 3023;
-          break;
-        case 'Rifle: Pump Action':
-          categoryID = 3102;
-          break;
         case 'Rifle':
-          categoryID = 3025;
+          switch (item.action) {
+            case 'Semi-Auto':
+              categoryID = 3024;
+              break;
+            case 'Single Shot':
+              categoryID = 3011;
+              break;
+            case 'Pump Action':
+              categoryID = 3102;
+              break;
+            case 'Bolt Action':
+              categoryID = 3022;
+              break;
+            case 'Lever Action':
+              categoryID = 3023;
+              break;
+            default:
+              categoryID = 3025;
+          }
           break;
         case 'Revolver':
-          ShippingPrice = 29;
           categoryID = 2325;
           break;
-        case 'Shotgun: Pump Action':
-          categoryID = 3106;
-          break;
-        case 'Shotgun: Over and Under':
-          categoryID = 3103;
-          break;
-        case 'Shotgun: Semi-Auto':
-          categoryID = 3105;
-          break;
-        case 'Shotgun: Lever Action':
-          categoryID = 3113;
-          break;
-        case 'Shotgun: Single Shot':
-          categoryID = 3107;
-          break;
-        case 'Shotgun: Bolt Action':
-          categoryID = 3112;
-          break;
-        case 'Shotgun: Side by Side':
-          categoryID = 3104;
+        case 'Shotgun':
+          switch (item.action) {
+            case 'Semi-Auto':
+              categoryID = 3105;
+              break;
+            case 'Side By Side':
+              categoryID = 3104;
+              break;
+            case 'Over / Under':
+              categoryID = 3103;
+              break;
+            case 'Pump Action':
+              categoryID = 3106;
+              break;
+            default:
+              categoryID = 3108;
+          }
           break;
         default:
           categoryID = 3004;
@@ -278,11 +378,13 @@ async function postAllListings(listings, limit){
   return countPosted;
 }
 
-async function postDavidsonsProducts(){
-  let inventory = await getInventory();
-  let filteredInventory = filterInventory(inventory);
-  let countPosted = await postAllListings(filteredInventory);
-  return countPosted;
+async function postSSProducts(){
+  let UnformatedInventory = await getInventory();
+  let inventory = await formatInventory(UnformatedInventory);
+  console.log('done');
+  //let filteredInventory = filterInventory(inventory);
+  //let countPosted = await postAllListings(filteredInventory);
+  //return countPosted;
 }
 
-export {getInventory};
+export {postSSProducts};
