@@ -1,5 +1,5 @@
 function descriptionGenerator(item){
-    var title = item.Manufacturer + " " + item.ModelSeries + " " + item.Caliber + " " + item.Capacity + " | " + item.UPCCode;
+    var title = item.manufacturer + " " + item.model + " " + item.caliber + " " + item.capacity + " | " + item.upc;
     let html = "<div style='padding:0;margin:0;background-color:#ffffff;border:1px solid gainsboro;color:black;font-family:Arial, Helvetica, sans-serif;margin:0px;padding:30px;'>";
     html = html + "<img alt='SEC Guns' height='148' src='https://secguns.com/wp-content/uploads/2022/07/White-Background-Navy-Blue-Logo-3882-x-4565-01-2-1-e1658779192334.jpg' style='max-width: 100px; margin:10px auto; display:block;'/>";
     
@@ -15,20 +15,18 @@ function descriptionGenerator(item){
     html = html + "<hr style='border:1px solid gainsboro;margin:20px 0;'/>";
 
     html = html + "<h2 style='line-height:1.4em;'>"+ title +"</h2>";
-    html = html + "<p style='background-color:gainsboro;color:black;width:fit-content;padding:7px;border-radius:3px;'><strong>UPC:</strong> "+ item.UPCCode +"</p>";
+    html = html + "<p style='background-color:gainsboro;color:black;width:fit-content;padding:7px;border-radius:3px;'><strong>UPC:</strong> "+ item.upc +"</p>";
 
     html = html + "<h3 style='width:100%;border-bottom:1px solid black;'>Firearm Specifications</h3>";
     html = html + "<div style='line-height: 1.5em;padding:20px 0;'>";
 
-    if(item.GunType != null){ html = html + "Type: "+item.GunType+"<br />" };
-    if(item.Action != null){ html = html + "Action: "+item.Action+"<br />" };
-    if(item.Capacity != null){ html = html + "Capacity: "+item.Capacity+"<br />" };
-    if(item.OverallLength != null){ html = html + "Overall Length: "+item.OverallLength+"<br />" };
-    if(item.BarrelLength != null){ html = html + "Barrel Length: "+item.BarrelLength+"<br />" };
-    if(item.Finish != null){ html = html + "Finish: "+item.Finish+"<br />" };
-    if(item.Sights != null){ html = html + "Sights: "+item.Sights+"<br />" };
-    if(item.Stock != null){ html = html + "Stock: "+item.Stock+"<br />" };
-    if(item.Features != null){ html = html + "Features: "+item.Features+"<br />" };
+    if(item.manufacturer){ html = html + "Manufacturer: "+item.manufacturer+"<br />" };
+    if(item.model){ html = html + "Model: "+item.model+"<br />" };
+    if(item.caliber){ html = html + "Caliber: "+item.caliber+"<br />" };
+    if(item.action){ html = html + "Action: "+item.action+"<br />" };
+    if(item.capacity){ html = html + "Capacity: "+item.capacity+"<br />" };
+    if(item.series){ html = html + "Series: "+item.series+"<br />" };
+    if(item.desc){ html = html + "Description: "+item.desc+"<br />" };
     html = html + "</div>";
 
     html = html + "<hr style='border:1px solid gainsboro;margin:20px 0;'/>";

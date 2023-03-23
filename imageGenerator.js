@@ -17,12 +17,12 @@ async function generateImages(url){
                 sharp.cache(false);
 
                 let template = sharp("tmp/template.jpg");
-                let buffer = await sharp('tmp/tmp.jpeg').resize(930, 680, { fit: sharp.fit.inside }).toBuffer();
+                let buffer = await sharp('tmp/tmp.jpeg').resize(890, 640, { fit: sharp.fit.inside }).toBuffer();
                 
                 await sharp(buffer).toFile("tmp/tmp.jpeg");
 
                 template.composite([
-                    { input: 'tmp/tmp.jpeg' }, { input: 'tmp/text.png', gravity: 'south'}
+                    { input: 'tmp/tmp.jpeg' }, { input: 'tmp/logo.png', gravity: 'south'}
                 ]);
 
                 await template.toFile('tmp/thumbnail.jpeg');

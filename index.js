@@ -4,10 +4,13 @@ import * as dotenv from 'dotenv';
 import chalk from 'chalk';
 import * as ftp from 'basic-ftp';
 import csvToJson from 'convert-csv-to-json';
+import decodeHtml from 'decode-html';
+import { xml2js } from 'xml-js';
 import { postLipseysProducts } from './listLipseys/index.js';
 import { postDavidsonsProducts } from './listDavidsons/index.js';
 import { postRSRProducts } from './listRSR/index.js';
 import { postSSProducts } from './listSportsSouth/index.js';
+import { fixImages } from './imageFixer.js';
 
 dotenv.config();
 
@@ -189,6 +192,7 @@ async function getDavidsonsInventoryFile(){
         secure: false
       });
       await client.downloadTo("davidsons_quantity.csv", "davidsons_quantity.csv");
+      await client.downloadTo("davidsons_inventory.csv", "davidsons_inventory.csv");
   }
   catch(err) {
       console.log(err);
@@ -260,11 +264,47 @@ async function getRSRInventory(){
     product.price = Number(item.rsrPrice);
     product.quantity = parseInt(item.quantity);
     product.map = Number(item.retailMAP);
+    product.imageURL = 'https://img.rsrgroup.com/highres-pimages/' + item.imgName;
 
     products.push(product);
   });
 
   return products;
+}
+
+async function getSSInventory(){
+  return new Promise(async (resolve,reject) => {
+    await axios.get('http://webservices.theshootingwarehouse.com/smart/inventory.asmx/DailyItemUpdate?CustomerNumber='+process.env.SS_ACCOUNT_NUMBER+'&UserName='+process.env.SS_USERNAME+'&Password='+process.env.SS_PASSWORD+'&Source='+process.env.SS_SOURCE+'&LastUpdate=1/1/1990&LastItem=-1', {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        responseType: 'document',
+        Accept: 'application/xml'
+      }
+    }).then(async function (response) {
+      let decoded = decodeHtml(response.data);
+      let xml = xml2js(decoded, {compact:true, spaces: 2});
+      let products = xml.string.NewDataSet.Table;
+
+      let formatted = [];
+      for (let item of products) {
+        if(parseInt(item.ITYPE._text) == 1 || parseInt(item.ITYPE._text) == 2){
+          // Skip if undefined
+          if(item.IMODEL._text == undefined){continue}
+          if(item.MFGINO._text == undefined){continue}
+          //console.log(item);
+          let newItem = {};
+          newItem.upc = parseInt(item.ITUPC._text);
+          newItem.quantity = parseInt(item.QTYOH._text);
+          newItem.map = Number(item.MFPRC._text);
+
+          formatted.push(newItem);
+        }
+      }
+      resolve(formatted);
+    }).catch(function (error) {
+      reject(error);
+    });
+  });
 }
 
 async function getListing(itemNo){
@@ -297,6 +337,8 @@ async function checkAllListings(){
   let DavidsonsInventory = await getDavidsonsInventory();
   logProcess("Getting RSR Inventory");
   let RSRInventory = await getRSRInventory();
+  logProcess("Getting Sports South Inventory");
+  let SSInventory = await getSSInventory();
 
   let potentialDeletes = [];
 
@@ -309,11 +351,13 @@ async function checkAllListings(){
       let lipseysResults = await LipseysInventory.find(item => item.upc == listing.upc);
       let RSRResults = await RSRInventory.find(item => item.upc == listing.upc);
       let davidsonsResults = await DavidsonsInventory.find(item => item.upc == listing.upc);
+      let SSResults = await SSInventory.find(item => item.upc == listing.upc);
       if(lipseysResults == undefined){lipseysResults={};lipseysResults.quantity = 0}
       if(RSRResults == undefined){RSRResults={};RSRResults.quantity = 0}
       if(davidsonsResults == undefined){davidsonsResults={};davidsonsResults.quantity = 0}
+      if(SSResults == undefined){SSResults={};SSResults.quantity = 0}
 
-      let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity;
+      let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity + SSResults.quantity;
 
       if(listing.quantity > totalAvailableQuantity){
         if(listing.upc){
@@ -324,6 +368,7 @@ async function checkAllListings(){
           console.log(chalk.bold.white(lipseysResults.quantity + " listed on Lipseys"));
           console.log(chalk.bold.white(davidsonsResults.quantity + " listed on Davidsons"));
           console.log(chalk.bold.white(RSRResults.quantity + " listed on RSR"));
+          console.log(chalk.bold.white(SSResults.quantity + " listed on Sports South"));
         }
       }
     }
@@ -358,4 +403,5 @@ async function postAll(){
 // START
 //postAll();
 //checkAllListings();
-postSSProducts();
+//postSSProducts(1);
+fixImages(1);

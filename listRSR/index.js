@@ -63,7 +63,7 @@ async function getInventory(){
   let products = csvToJson.getJsonFromCsv('rsrinventory.txt');
   let productInfo = csvToJson.getJsonFromCsv('attributes.txt');
 
-  let withImage = products.filter( item => item.imgName);
+  let withImage = products.filter( item => item.imgName );
 
   let items = withImage.map((item) => {
     item.upc = parseInt(item.upc);
