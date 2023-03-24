@@ -183,11 +183,9 @@ async function replaceImage(url, itemID){
 			const thumbnailBlob = new Blob([newThumbnail], { name: "picture", type: 'image/jpeg', 'Content-Disposition':'form-data' });
 			const data = new FormData();
       data.append("picture", thumbnailBlob, 'new-thumbnail.jpeg');
-
-			console.log("posting");
 			resolve(true);
 
-			/*let token = await GunBrokerAccessToken;
+			let token = await GunBrokerAccessToken;
       await axios.post('https://api.gunbroker.com/v1/Pictures/'+itemID, data, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -201,12 +199,16 @@ async function replaceImage(url, itemID){
       .catch(function (error) {
         reject(error.response.data);
       });
-			*/
+			
 		}).catch((error) => {reject(error)});
 	});
 }
 
 export async function fixImages(limit){
+
+	const alreadyListedFile = fs.readFileSync('updatedListings.txt');
+  const alreadyListed = JSON.parse(alreadyListedFile);
+
   // Get every Gunbroker listing item No
   logProcess("Getting all GunBroker listings");
   let listingIDs = await getAllListings();
@@ -216,29 +218,62 @@ export async function fixImages(limit){
   let LipseysInventory = await getLipseysInventory();
 	
   logProcess("Getting Davidsons Inventory");
-  //let DavidsonsInventory = await getDavidsonsInventory();
+  let DavidsonsInventory = await getDavidsonsInventory();
 	
   logProcess("Getting RSR Inventory");
-  //let RSRInventory = await getRSRInventory();
+  let RSRInventory = await getRSRInventory();
 
 	let updatedCount = 0;
 
   for (const listingID of listingIDs){
-		if(updatedCount < limit){
-			let listing = await getListing(listingID).catch((error) => {console.log(error)});
+		if(updatedCount < limit || limit == undefined){
+			if(!alreadyListed.includes(listingID)){
+				let listing = await getListing(listingID).catch((error) => {console.log(error)});
 
-			// Find image URL from UPC
-			
-			if(await LipseysInventory.find(product => product.upc == listing.upc)){
-				let result = await replaceImage(LipseysInventory.find(product => product.upc == listing.upc).imageURL, listingID).catch((error) => console.log(chalk.bold.red(error)))
-				.catch((error) => console.log(chalk.red(error)));
-				if(result){
-					console.log(chalk.bold.green("Image added for item ["+listingID+"]"));
-					updatedCount++;
-				}else{
-					console.log(result);
+				// Find image URL from UPC
+				if(await RSRInventory.find(product => product.upc == listing.upc)){
+					let result = await replaceImage(RSRInventory.find(product => product.upc == listing.upc).imageURL, listingID).catch((error) => console.log(chalk.bold.red(error)))
+					.catch((error) => console.log(chalk.red(error)));
+					if(result){
+						console.log(chalk.bold.green("(RSR) Image added for item ["+listingID+"]"));
+						updatedCount++;
+						alreadyListed.push(listingID);
+					}else{
+						console.log(result);
+					}
 				}
+				else if(await LipseysInventory.find(product => product.upc == listing.upc)){
+					let result = await replaceImage(LipseysInventory.find(product => product.upc == listing.upc).imageURL, listingID).catch((error) => console.log(chalk.bold.red(error)))
+					.catch((error) => console.log(chalk.red(error)));
+					if(result){
+						console.log(chalk.bold.green("(Lipseys) Image added for item ["+listingID+"]"));
+						updatedCount++;
+						alreadyListed.push(listingID);
+					}else{
+						console.log(result);
+					}
+				}
+				else if(await DavidsonsInventory.find(product => product.upc == listing.upc)){
+					let result = await replaceImage(DavidsonsInventory.find(product => product.upc == listing.upc).imageURL, listingID).catch((error) => console.log(chalk.bold.red(error)))
+					.catch((error) => console.log(chalk.red(error)));
+					if(result){
+						console.log(chalk.bold.green("(Davidsons) Image added for item ["+listingID+"]"));
+						updatedCount++;
+						alreadyListed.push(listingID);
+					}else{
+						console.log(result);
+					}
+				}else{
+					console.log(chalk.bold.red("Could not find image for item ["+listingID+"]."));
+				}
+				
+			}else{
+				console.log(chalk.bold.yellow("Image already updated."));
 			}
 		}
 	}
+	var file = fs.createWriteStream('updatedListings.txt');
+	file.write(JSON.stringify(alreadyListed));
+  file.on('error', function(err) { console.log(err) });
+  file.end();
 }

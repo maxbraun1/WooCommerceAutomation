@@ -404,4 +404,4 @@ async function postAll(){
 //postAll();
 //checkAllListings();
 //postSSProducts(1);
-fixImages(1);
+fixImages();
