@@ -81,7 +81,7 @@ function postOnSEC(item, imageLocation){
           position: 0,
           visible: true,
           variation: false,
-          options: [ await determineCaliber(item.caliberGauge) ]
+          options: [ item.caliberGauge ]
         },
         {
           id: 8,
@@ -95,14 +95,15 @@ function postOnSEC(item, imageLocation){
       
       // Setting Category IDs and Shipping Prices
       let categories;
-      let ShippingPrice = 30;
+      let ShippingClass = 'firearm';
 
       switch(item.type) {
         case 'Semi-Auto Pistol':
-          ShippingPrice = 29;
+          ShippingClass = 'handgun-revolver';
           categories = [ { id: 74 }, { id: 79 }, { id: 81 } ];
           break;
         case 'Rifle':
+          ShippingClass = 'rifle-shotgun-pistol';
           switch (item.action) {
             case 'Semi-Auto':
               categories = [ { id: 74 }, { id: 78 }, { id: 173 } ];
@@ -124,9 +125,11 @@ function postOnSEC(item, imageLocation){
           }
           break;
         case 'Revolver':
+          ShippingClass = 'handgun-revolver';
           categories = [ { id: 74 }, { id: 79 }, { id: 80 } ];
           break;
         case 'Shotgun':
+          ShippingClass = 'rifle-shotgun-pistol';
           categories = [ { id: 74 }, { id: 82 } ];
           break;
         default:
@@ -150,6 +153,7 @@ function postOnSEC(item, imageLocation){
         stock_quantity: quantity,
         categories: categories,
         attributes: attributes,
+        shipping_class: ShippingClass,
         brands: [await determineBrand(item.manufacturer)],
         tags: [ { name:item.manufacturer }, { name:item.caliberGauge }, { name:item.model }, { name:item.action }, { name:item.type }, { name:item.finish } ],
         images: [
@@ -184,8 +188,8 @@ function postOnSEC(item, imageLocation){
         console.log(chalk.green.bold("Product posted with ID "+response.data.id));
       })
       .catch(function (error) {
-        console.log(error);
-        reject(error);
+        console.log(error.data);
+        reject(error.data);
         return;
       });
 

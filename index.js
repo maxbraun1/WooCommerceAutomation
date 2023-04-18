@@ -10,9 +10,9 @@ import { postLipseysProducts } from './listLipseys/index.js';
 import { postDavidsonsProducts } from './listDavidsons/index.js';
 import { postRSRProducts } from './listRSR/index.js';
 import { postSSProducts } from './listSportsSouth/index.js';
-import { fixImages } from './imageFixer.js';
 import stringSimilarity from 'string-similarity';
 import pkg from '@woocommerce/woocommerce-rest-api';
+import SFTPClient from 'ssh2-sftp-client';
 const WooCommerceRestApi = pkg.default;
 
 dotenv.config();
@@ -22,6 +22,14 @@ export const WooCommerce = new WooCommerceRestApi({
   consumerKey: process.env.SEC_KEY,
   consumerSecret: process.env.SEC_SECRET,
   version: "wc/v3"
+});
+
+let client = new SFTPClient();
+await client.connect({
+  host: "secgunsdev.sftp.wpengine.com",
+  port: '2222',
+  user: process.env.SEC_FTP_USER,
+  password: process.env.SEC_FTP_PASS
 });
 
 function logProcess(message, type){
@@ -419,7 +427,7 @@ async function checkAllListings(){
   file.end();
 }
 
-export {logProcess, checkAlreadyPosted, LipseyAuthToken, determineBrand, determineCaliber};
+export {logProcess, checkAlreadyPosted, LipseyAuthToken, determineBrand, determineCaliber, client};
 
 // RUN PROCESS
 
@@ -442,4 +450,4 @@ async function postAll(){
 //postAll();
 //checkAllListings();
 //postSSProducts();
-postLipseysProducts(1);
+postLipseysProducts();
