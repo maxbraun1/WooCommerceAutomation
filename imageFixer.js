@@ -4,12 +4,10 @@ import * as dotenv from 'dotenv';
 import { generateImages } from './imageGenerator.js';
 import chalk from 'chalk';
 import { logProcess } from './index.js';
-import { GunBrokerAccessToken } from './index.js';
 import { xml2js } from 'xml-js';
 import decodeHtml from 'decode-html';
 import * as ftp from 'basic-ftp';
 import csvToJson from 'convert-csv-to-json/src/csvToJson.js';
-import { currentUserID } from './index.js';
 import { LipseyAuthToken } from './index.js';
 
 function getAllListings(){

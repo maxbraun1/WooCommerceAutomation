@@ -4,10 +4,10 @@ import * as dotenv from 'dotenv';
 import descriptionGenerator from './descriptionGenerator.js';
 import { generateImages } from '../imageGenerator.js';
 import chalk from 'chalk';
-import { logProcess } from '../index.js';
-import { GunBrokerAccessToken } from '../index.js';
+import { determineBrand, determineCaliber, logProcess } from '../index.js';
 import { checkAlreadyPosted  } from '../index.js';
 import { LipseyAuthToken } from '../index.js';
+import { WooCommerce } from '../index.js';
 
 dotenv.config();
 
@@ -42,20 +42,19 @@ async function filterInventory(dataset){
   return filtered;
 }
 
-function postOnGunBroker(item){
+function postOnSEC(item, imageLocation){
+
   return new Promise( async (resolve, reject) => {
 
     try{
-      let thumbnail = fs.readFileSync('./tmp/thumbnail.jpeg');
-      let img1 = fs.readFileSync('./tmp/tmp.jpeg');
 
       // Setting Quantity
       let quantity;
 
       if(item.quantity >= 50){
-        quantity = 5;
+        quantity = 10;
       }else if(item.quantity < 50 && item.quantity >= 20){
-        quantity = 1;
+        quantity = 5;
       }else{
         return;
       }
@@ -66,167 +65,127 @@ function postOnGunBroker(item){
       let cost = item.price;
       let map = item.retailMap; // Map will be number, 0 if there is no map
 
-      price = cost * 1.15; // set price to cost of gun plus 15% then round to 2 decimals
+      price = cost * 1.9; // set price to cost of gun plus 15% then round to 2 decimals
       price = (Math.round(price * 100) / 100).toFixed(2);
 
       if(price < map){ // if new price is lower than map, set price to map
         price = map;
       }
+
+      // Setting Attributes
+
+      let attributes = [
+        {
+          id: 10,
+          name: 'Caliber',
+          position: 0,
+          visible: true,
+          variation: false,
+          options: [ await determineCaliber(item.caliberGauge) ]
+        },
+        {
+          id: 8,
+          name: 'is_firearm',
+          position: 1,
+          visible: true,
+          variation: false,
+          options: [ 'YES' ]
+        }
+      ]
       
       // Setting Category IDs and Shipping Prices
-      let categoryID;
+      let categories;
       let ShippingPrice = 30;
 
       switch(item.type) {
         case 'Semi-Auto Pistol':
           ShippingPrice = 29;
-          categoryID = 3026;
+          categories = [ { id: 74 }, { id: 79 }, { id: 81 } ];
           break;
         case 'Rifle':
           switch (item.action) {
             case 'Semi-Auto':
-              categoryID = 3024;
+              categories = [ { id: 74 }, { id: 78 }, { id: 173 } ];
               break;
             case 'Single Shot':
-              categoryID = 3011;
+              categories = [ { id: 74 }, { id: 78 } ];
               break;
             case 'Pump Action':
-              categoryID = 3102;
+              categories = [ { id: 74 }, { id: 78 } ];
               break;
             case 'Bolt Action':
-              categoryID = 3022;
+              categories = [ { id: 74 }, { id: 78 }, { id: 169 } ];
               break;
             case 'Lever Action':
-              categoryID = 3023;
+              categories = [ { id: 74 }, { id: 78 } ];
               break;
             default:
-              categoryID = 3025;
+              categories = [ { id: 74 }, { id: 78 }];
           }
           break;
         case 'Revolver':
-          categoryID = 2325;
+          categories = [ { id: 74 }, { id: 79 }, { id: 80 } ];
           break;
         case 'Shotgun':
-          switch (item.action) {
-            case 'Semi-Auto':
-              categoryID = 3105;
-              break;
-            case 'Side By Side':
-              categoryID = 3104;
-              break;
-            case 'Over / Under':
-              categoryID = 3103;
-              break;
-            case 'Pump Action':
-              categoryID = 3106;
-              break;
-            default:
-              categoryID = 3108;
-          }
+          categories = [ { id: 74 }, { id: 82 } ];
           break;
         default:
-          categoryID = 3004;
+          categories = [ { id: 74 } ];
       }
-
-      var title = item.manufacturer + " " + item.model + " " + item.caliberGauge + " " + item.capacity + " | " + item.upc;
-
-      if(title.length > 75){
-        title = item.manufacturer + " " + item.model + " | " + item.upc;
-        if(title.length > 75){
-          return;
-        }
-      }
+      
+      var title = item.manufacturer + " " + item.model + " " + item.caliberGauge + " " + item.capacity;
 
       title = Array.from(new Set(title.split(' '))).toString();
       title = title.replaceAll(",", " ");
 
       // Prepare listing
-      var listingSettings = {
-        AutoRelist: 1, // Do not relist
-        CanOffer: false, 
-        CategoryID: categoryID,
-        Characteristics: {
-          Manufacturer: item.manufacturer,
-          Model: item.model,
-          Caliber: item.caliberGauge,
-        },
-        Condition: 1, // Factory New
-        CountryCode: "US",
-        Description: descriptionGenerator(item),
-        FixedPrice: price,
-        InspectionPeriod: 1, // Sales are final
-        isFFLRequired: true,
-        ListingDuration: 90, // List for 90 days
-        MfgPartNumber: item.manufacturerModelNo,
-        PaymentMethods: {
-          Check: false,
-          VisaMastercard: true,
-          COD: false,
-          Escrow: false,
-          Amex: true,
-          PayPal: false,
-          Discover: true,
-          SeeItemDesc: false,
-          CertifiedCheck: false,
-          USPSMoneyOrder: true,
-          MoneyOrder: true,
-          FreedomCoin: false
-        },
-        PaymentPlan: 0,
-        PremiumFeatures: {
-          IsFeaturedItem: true,
-        },
-        PostalCode: "33511",
-        Prop65Warning: "Cancer and Reproductive Harm www.P65Warnings.ca.gov",
-        Quantity: quantity,
-        UseDefaultSalesTax: true,
-        ShippingClassesSupported: {
-          Overnight: false,
-          TwoDay: false,
-          ThreeDay: false,
-          Ground: true,
-          FirstClass: false,
-          Priority: false,
-          InStorePickup: false,
-          AlaskaHawaii: false,
-          Other: false
-        },
-        ShippingClassCosts: { Ground: ShippingPrice },
-        SKU: 'LIP',
-        StandardTextID: 4713,
-        Title: title,
-        UPC: item.upc,
-        WhoPaysForShipping: 8,
-        WillShipInternational: false
+      var data = {
+        name: title,
+        status: 'publish',
+        description: descriptionGenerator(item),
+        sku: item.upc,
+        regular_price: item.msrp.toString(),
+        sale_price: price.toString(),
+        manage_stock: true,
+        stock_quantity: quantity,
+        categories: categories,
+        attributes: attributes,
+        brands: [await determineBrand(item.manufacturer)],
+        tags: [ { name:item.manufacturer }, { name:item.caliberGauge }, { name:item.model }, { name:item.action }, { name:item.type }, { name:item.finish } ],
+        images: [
+          {
+            src: "https://secguns.com/" + imageLocation,
+            name: title + " " + item.upc,
+            alt: title + " " + item.upc
+          },
+        ],
+        meta_data: [
+          {
+            key: '_firearm_product',
+            value: 'yes'
+          },
+          {
+            key: '_yoast_wpseo_focuskw',
+            value: item.manufacturer + " " + item.model + " " + item.upc
+          },
+          {
+            key: '_yoast_wpseo_title',
+            value:  title + " " + item.upc
+          },
+          {
+            key: '_yoast_wpseo_metadesc',
+            value:  item.manufacturer + " " + item.model + " " + item.upc + " for sale by SEC Guns. " + item.description1
+          }
+        ]
       };
 
-      const listingSettingsJSON = JSON.stringify(listingSettings);
-      const listingSettingsBlob = new Blob([listingSettingsJSON], {
-        type: 'form-data',
-      });
-      const thumbnailBlob = new Blob([thumbnail], { name: "thumbnail", type: 'image/jpeg', 'Content-Disposition':'form-data' });
-      const img1Blob = new Blob([thumbnail], { name: "picture", type: 'image/jpeg', 'Content-Disposition':'form-data' });
-      const img2Blob = new Blob([img1], { name: "picture", type: 'image/jpeg', 'Content-Disposition':'form-data' });
-      const data = new FormData();
-      data.append("data", listingSettingsBlob);
-      data.append("thumbnail", thumbnailBlob, 'thumbnail.jpeg');
-      data.append("picture", img1Blob, 'picture1.jpeg');
-      data.append("picture", img2Blob, 'picture2.jpeg');
-
-      let token = await GunBrokerAccessToken;
-      await axios.post('https://api.gunbroker.com/v1/Items', data, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'X-DevKey': process.env.GUNBROKER_DEVKEY,
-          'X-AccessToken': token
-        }
-      })
+      await WooCommerce.post('products', data)
       .then(function (response) {
-        logProcess(response.data.userMessage,'good');
+        console.log(chalk.green.bold("Product posted with ID "+response.data.id));
       })
       .catch(function (error) {
-        console.log(error.response.data);
-        reject(error.response.data);
+        console.log(error);
+        reject(error);
         return;
       });
 
@@ -239,14 +198,15 @@ function postOnGunBroker(item){
   });
 }
 
-async function postAllListings(listings, limit){
+async function postAllItems(listings, limit){
 
-  logProcess("Posting " + chalk.bold.green(listings.length) + " items on GunBroker.");
+  logProcess("Posting " + chalk.bold.green(listings.length) + " items on SEC");
 
   let count = 0;
   let countPosted = 0;
 
   for(let item of listings){
+
     count++;
 
     if(countPosted >= limit){
@@ -258,9 +218,9 @@ async function postAllListings(listings, limit){
     if(alreadyPosted){
       console.log(chalk.bold.blue.bgWhite(" Lipseys Item "+ count + " / " + listings.length + " ") + chalk.bold.yellow(" ["+item.upc+"] Item already posted."));
     }else{
-      await generateImages("https://www.lipseyscloud.com/images/"+item.imageName)
-      .then( async () => {
-        await postOnGunBroker(item, count).catch((error) => console.log(error)).then(() => {
+      await generateImages("https://www.lipseyscloud.com/images/"+item.imageName, item.upc)
+      .then( async (imageLocation) => {
+        await postOnSEC(item, imageLocation).catch((error) => console.log(error)).then(() => {
           countPosted++;
           console.log(chalk.bold.blue.bgWhite(" Lipseys Item "+ count + " / " + listings.length + " ") + chalk.bold.green(" [" + item.upc + "] Item (" + item.manufacturer + " " + item.model + ") Posted"));
         });
@@ -277,7 +237,7 @@ async function postAllListings(listings, limit){
 async function postLipseysProducts(limit){
   let inventory = await getInventory().catch((error) => console.log(error));
   let filteredInventory = await filterInventory(inventory);
-  let countPosted = await postAllListings(filteredInventory, limit);
+  let countPosted = await postAllItems(filteredInventory, limit);
   return countPosted;
 }
 

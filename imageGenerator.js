@@ -1,9 +1,10 @@
 import sharp from 'sharp';
 import download from 'image-downloader';
-import chalk from 'chalk';
 import fs from 'fs';
+import * as ftp from 'basic-ftp';
+import SFTPClient from 'ssh2-sftp-client';
 
-async function generateImages(url){
+async function generateImages(url, upc){
     return new Promise(async (resolve, reject) => {
         let options = {
             url: url,
@@ -17,16 +18,32 @@ async function generateImages(url){
                 sharp.cache(false);
 
                 let template = sharp("tmp/template.jpg");
-                let buffer = await sharp('tmp/tmp.jpeg').resize(890, 640, { fit: sharp.fit.inside }).toBuffer();
+                let buffer = await sharp('tmp/tmp.jpeg').resize(990, 990, { fit: sharp.fit.inside }).flatten({ background: '#FFFFFF' }).toBuffer();
                 
                 await sharp(buffer).toFile("tmp/tmp.jpeg");
 
                 template.composite([
-                    { input: 'tmp/tmp.jpeg' }, { input: 'tmp/logo.png', gravity: 'south'}
+                    { input: 'tmp/tmp.jpeg' }
                 ]);
 
                 await template.toFile('tmp/thumbnail.jpeg');
-                resolve();
+                
+                let client = new SFTPClient();
+
+                try {
+                    await client.connect({
+                        host: "secgunsdev.sftp.wpengine.com",
+                        port: '2222',
+                        user: process.env.SEC_FTP_USER,
+                        password: process.env.SEC_FTP_PASS
+                    });
+                    await client.put("tmp/thumbnail.jpeg", "wp-content/uploads/product_images/image_" + upc + ".jpeg");
+                }
+                catch(err) {
+                    console.log(err);
+                }
+
+                resolve("wp-content/uploads/product_images/image_" + upc + ".jpeg");
             }catch (error) {
                 // Catch Image Editing Errors
                 reject(error);

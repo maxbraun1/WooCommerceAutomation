@@ -6,11 +6,6 @@ function descriptionGenerator(item){
     html = html + "<a style='display:block;background-color:#031834;color:white;padding:10px 30px;border-radius: 5px;text-decoration: none;margin:20px auto;width:fit-content;' href='https://www.gunbroker.com/All/search?IncludeSellers=2795514' target='_blank'>VIEW MORE LISTINGS</a>";
 
     html = html + "<p style='color:red; font-size:24px;text-align: center; font-weight: bold;'>Due to high volume, shipping will take 7-10 business days.</p>";
-    
-    html = html + "<div style='width: 100%;background-color: #6de086;padding: 10px;display: flex;border-radius: 5px;border: 2px solid #5cbe71;box-sizing:border-box;margin-bottom:5px;'>";
-    html = html + "<img style='width:25px;height:25px;' src='https://secguns.com/wp-content/uploads/2022/12/credit-card.png'/>";
-    html = html + "<p style='line-height:25px;font-weight:bold;text-transform:uppercase;margin-bottom:0; margin-left:10px; margin-right:0; margin-top:0;'>No credit card fee!</p>";
-    html = html + "</div>";
 
     html = html + "<hr style='border:1px solid gainsboro;margin:20px 0;'/>";
 

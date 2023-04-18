@@ -7,8 +7,6 @@ import chalk from 'chalk';
 import * as ftp from 'basic-ftp';
 import csvToJson from 'convert-csv-to-json/src/csvToJson.js';
 import { logProcess } from '../index.js';
-import { GunBrokerAccessToken } from '../index.js';
-import { currentUserID } from '../index.js';
 import { checkAlreadyPosted  } from '../index.js';
 
 dotenv.config();

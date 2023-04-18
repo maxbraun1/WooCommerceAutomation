@@ -11,8 +11,18 @@ import { postDavidsonsProducts } from './listDavidsons/index.js';
 import { postRSRProducts } from './listRSR/index.js';
 import { postSSProducts } from './listSportsSouth/index.js';
 import { fixImages } from './imageFixer.js';
+import stringSimilarity from 'string-similarity';
+import pkg from '@woocommerce/woocommerce-rest-api';
+const WooCommerceRestApi = pkg.default;
 
 dotenv.config();
+
+export const WooCommerce = new WooCommerceRestApi({
+  url: 'https://secguns.com',
+  consumerKey: process.env.SEC_KEY,
+  consumerSecret: process.env.SEC_SECRET,
+  version: "wc/v3"
+});
 
 function logProcess(message, type){
   console.log("_________________________________________________________________________________");
@@ -31,70 +41,98 @@ function logProcess(message, type){
   }
 }
 
-let GunBrokerAccessToken = new Promise(function(resolve,reject){
-  const gunbroker_credentials = { "Username": process.env.GUNBROKER_USERNAME, "Password": process.env.GUNBROKER_PASSWORD };
-  axios.post('https://api.gunbroker.com/v1/Users/AccessToken', gunbroker_credentials,{
-  headers: {
-    'Content-Type': 'application/json',
-    'X-DevKey': process.env.GUNBROKER_DEVKEY
-  },
-  })
-  .then(function (response) {
-    resolve(response.data.accessToken);
-  })
-  .catch(function (error) {
-    reject(new Error(error));
-  });
-});
-
-let currentUserID = new Promise( async (resolve, reject) => {
-  let token = await GunBrokerAccessToken;
-  axios.get('https://api.gunbroker.com/v1/Users/AccountInfo',{
-    headers: {
-      'Content-Type': 'application/json',
-      'X-DevKey': process.env.GUNBROKER_DEVKEY,
-      'X-AccessToken': token
+// Brand
+let brands = new Promise(async function(resolve, reject){
+  await axios.get('https://secguns.com/wp-json/wc/v2/products/brands?per_page=100',{
+    auth: {
+      username: process.env.SEC_WORDPRESS_USER,
+      password: process.env.SEC_WORDPRESS_PASS
     },
   })
   .then(function (response) {
-    resolve(response.data.userSummary.userID);
+    let brandList = [];
+    response.data.map((item) => {
+      let newBrand = {};
+      newBrand.name = item.name;
+      newBrand.id = item.id;
+
+      brandList.push(newBrand);
+    });
+
+    resolve(brandList);
   })
   .catch(function (error) {
+    console.log(error);
     reject(new Error(error));
   });
 });
 
+async function determineBrand(brand){
+  let brandList = await brands;
+  let brandNames = brandList.map((item) => {return item.name});
+  let match = stringSimilarity.findBestMatch(brand, brandNames);
+  let bestMatch = brandList.find(item => item.name === match.bestMatch.target);
+  if(match.bestMatch.rating >= 0.5){
+    return bestMatch.id;
+  }else{
+    return null;
+  }
+}
+
+// Attribute
+let calibers = new Promise(async function(resolve, reject){
+  WooCommerce.get("products/attributes/10/terms?per_page=100")
+  .then((response) => {
+    let caliberList = [];
+    response.data.map((item) => {
+      let newCaliber = {};
+      newCaliber.name = item.name;
+      newCaliber.id = item.id;
+
+      caliberList.push(newCaliber);
+    });
+
+    resolve(caliberList);
+  })
+  .catch((error) => {
+    console.log(error.response.data);
+  });
+});
+
+async function determineCaliber(caliber){
+  let caliberList = await calibers;
+  let caliberNames = caliberList.map((item) => {return item.name});
+  let match = stringSimilarity.findBestMatch(caliber, caliberNames);
+  let bestMatch = caliberList.find(item => item.name === match.bestMatch.target);
+  if(match.bestMatch.rating >= 0.5){
+    console.log("Given '"+caliber+"', found '"+bestMatch.name+"' with "+match.bestMatch.rating*100+"% similarity.");
+    return bestMatch.name;
+  }else{
+    console.log("Given '"+caliber+"', found '"+bestMatch.name+"' with "+match.bestMatch.rating*100+"% similarity.");
+    return 'Other';
+  }
+}
+
 function checkAlreadyPosted(upc){
   return new Promise( async (resolve, reject) => {
-    let userID = await currentUserID;
-    let token = await GunBrokerAccessToken;
-    axios.get('https://api.gunbroker.com/v1/Items?IncludeSellers='+userID+'&UPC='+upc,{
-      headers: {
-        'Content-Type': 'application/json',
-        'X-DevKey': process.env.GUNBROKER_DEVKEY,
-        'X-AccessToken': token
-      },
-    })
-    .then(function (response) {
-      if(response.data.countReturned > 0){
-        // Product Already Posted
+    WooCommerce.get("products/?sku=" + upc)
+    .then((response) => {
+      if(response.data.length > 0){
         resolve(true);
       }else{
         resolve(false);
       }
+      //console.log(response.data);
     })
-    .catch(function (error) {
-      console.log(error);
-      reject(new Error(error));
+    .catch((error) => {
+      console.log(error.response.data);
     });
   });
 }
 
 function getAllListings(){
   return new Promise( async (resolve, reject) => {
-    let userID = await currentUserID;
-    let token = await GunBrokerAccessToken;
-    await axios.get('https://api.gunbroker.com/v1/Items?BuyNowOnly=true&PageSize=1&IncludeSellers='+userID,{
+    await axios.get('http://api.gunbroker.com/v1/Items?BuyNowOnly=true&PageSize=1&IncludeSellers='+userID,{
       headers: {
         'Content-Type': 'application/json',
         "User-Agent": "axios 0.21.1",
@@ -381,7 +419,7 @@ async function checkAllListings(){
   file.end();
 }
 
-export {logProcess, currentUserID, GunBrokerAccessToken, checkAlreadyPosted, LipseyAuthToken};
+export {logProcess, checkAlreadyPosted, LipseyAuthToken, determineBrand, determineCaliber};
 
 // RUN PROCESS
 
@@ -403,5 +441,5 @@ async function postAll(){
 // START
 //postAll();
 //checkAllListings();
-//postSSProducts(1);
-fixImages();
+//postSSProducts();
+postLipseysProducts(1);
