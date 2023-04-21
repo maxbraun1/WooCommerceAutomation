@@ -50,24 +50,97 @@ function logProcess(message, type){
 }
 
 // Brand
-let brands = new Promise(async function(resolve, reject){
+let brands = [{name: "", id: null}];
+
+async function getBrands(){
+  // Gets all brands from SEC and returns as array of objects {name:[name], id:[id]}
   await axios.get('https://secguns.com/wp-json/wc/v2/products/brands?per_page=100',{
     auth: {
       username: process.env.SEC_WORDPRESS_USER,
       password: process.env.SEC_WORDPRESS_PASS
     },
   })
-  .then(function (response) {
+  .then(async function (response) {
+    let pages = response.headers['x-wp-totalpages'];
     let brandList = [];
-    response.data.map((item) => {
-      let newBrand = {};
-      newBrand.name = item.name;
-      newBrand.id = item.id;
+    for(let x = 0; x < pages; x++){
+      let offset = (x * 100);
+      await axios.get('https://secguns.com/wp-json/wc/v2/products/brands?per_page=100&offset=' + offset,{
+        auth: {
+          username: process.env.SEC_WORDPRESS_USER,
+          password: process.env.SEC_WORDPRESS_PASS
+        },
+      })
+      .then(async function (response) {
+        await response.data.map((item) => {
+          let newBrand = {};
+          newBrand.name = item.name;
+          newBrand.id = item.id;
+    
+          brandList.push(newBrand);
+        });
+      }).catch(function (error) {
+        console.log(error);
+      });
+    }
+    brands.push(...brandList);
+  })
+  .catch(function (error) {
+    console.log(error);
+  });
+};
 
-      brandList.push(newBrand);
-    });
+await getBrands();
 
-    resolve(brandList);
+async function determineBrand(brand){
+  let brandNames = brands.map((item) => {return item.name.toLowerCase().replace("&amp;", "&")});
+  let match = stringSimilarity.findBestMatch(brand.toLowerCase(), brandNames);
+  let bestMatch = brands.find(item => item.name.toLowerCase().replace("&amp;", "&") === match.bestMatch.target);
+  
+  console.log("given '"+brand+"' found best match '"+bestMatch.name+"' with rating: "+match.bestMatch.rating);
+  if(match.bestMatch.rating >= 0.85){
+    return bestMatch.id;
+  }
+  // Brand doesn't exist, create brand
+  const data = {
+    name: brand,
+  };
+  
+  return await WooCommerce.post("products/brands", data)
+  .then((response) => {
+    console.log(chalk.bold.yellow("New Brand created: " + response.data.name));
+    brands.push({name: brand, id: response.data.id});
+    return response.data.id;
+  })
+  .catch((error) => {
+    console.log(error.data);
+    return null;
+  });
+}
+
+// Caliber
+let calibers = new Promise(async function(resolve, reject){ // Gets all calibers from SEC and returns as array of objects {name:[name], id:[id]}
+  WooCommerce.get("products/attributes/10/terms?per_page=100")
+  .then(async function (response) {
+    let pages = response.headers['x-wp-totalpages'];
+    let caliberList = [];
+    for(let x = 0; x < pages; x++){
+      let offset = (x * 100);
+      await WooCommerce.get("products/attributes/10/terms?per_page=100&offset=" + offset)
+      .then(function (response) {
+        response.data.map((item) => {
+          let newCaliber = {};
+          newCaliber.name = item.name;
+          newCaliber.id = item.id;
+    
+          caliberList.push(newCaliber);
+        });
+      }).catch(function (error) {
+        console.log(error);
+        reject(new Error(error));
+      });
+    }
+    resolve(caliberList);
   })
   .catch(function (error) {
     console.log(error);
@@ -75,49 +148,20 @@ let brands = new Promise(async function(resolve, reject){
   });
 });
 
-async function determineBrand(brand){
-  let brandList = await brands;
-  let brandNames = brandList.map((item) => {return item.name});
-  let match = stringSimilarity.findBestMatch(brand, brandNames);
-  let bestMatch = brandList.find(item => item.name === match.bestMatch.target);
-  if(match.bestMatch.rating >= 0.5){
-    return bestMatch.id;
-  }else{
-    return null;
-  }
-}
-
-// Attribute
-let calibers = new Promise(async function(resolve, reject){
-  WooCommerce.get("products/attributes/10/terms?per_page=100")
-  .then((response) => {
-    let caliberList = [];
-    response.data.map((item) => {
-      let newCaliber = {};
-      newCaliber.name = item.name;
-      newCaliber.id = item.id;
-
-      caliberList.push(newCaliber);
-    });
-
-    resolve(caliberList);
-  })
-  .catch((error) => {
-    console.log(error.response.data);
-  });
-});
-
 async function determineCaliber(caliber){
   let caliberList = await calibers;
-  let caliberNames = caliberList.map((item) => {return item.name});
-  let match = stringSimilarity.findBestMatch(caliber, caliberNames);
-  let bestMatch = caliberList.find(item => item.name === match.bestMatch.target);
-  if(match.bestMatch.rating >= 0.5){
-    console.log("Given '"+caliber+"', found '"+bestMatch.name+"' with "+match.bestMatch.rating*100+"% similarity.");
-    return bestMatch.name;
+  if(caliberList.length < 1){
+    return caliber;
   }else{
-    console.log("Given '"+caliber+"', found '"+bestMatch.name+"' with "+match.bestMatch.rating*100+"% similarity.");
-    return 'Other';
+    let caliberNames = caliberList.map((item) => {return item.name});
+    let match = stringSimilarity.findBestMatch(caliber, caliberNames);
+    let bestMatch = caliberList.find(item => item.name === match.bestMatch.target);
+    if(match.bestMatch.rating >= 0.85){
+      console.log("Given '"+caliber+"', found '"+bestMatch.name+"' with "+match.bestMatch.rating*100+"% similarity.");
+      return bestMatch.name;
+    }else{
+      return caliber;
+    }
   }
 }
 
@@ -139,44 +183,34 @@ function checkAlreadyPosted(upc){
 }
 
 function getAllListings(){
-  return new Promise( async (resolve, reject) => {
-    await axios.get('http://api.gunbroker.com/v1/Items?BuyNowOnly=true&PageSize=1&IncludeSellers='+userID,{
-      headers: {
-        'Content-Type': 'application/json',
-        "User-Agent": "axios 0.21.1",
-        'X-DevKey': process.env.GUNBROKER_DEVKEY,
-        'X-AccessToken': token
-      },
-    })
-    .then(async (response) => {
-      let listings = []
-      let listingsNum = response.data.countReturned; // Total number of listinigs
-      let iterations = Math.ceil(listingsNum/300); // Number of times to request results in sets of 300
-      for(let i = 1; i <= iterations; i++){
-        let token = await GunBrokerAccessToken;
-        await axios.get('https://api.gunbroker.com/v1/Items?BuyNowOnly=true&PageSize=300&PageIndex='+i+'&IncludeSellers='+userID,{
-          headers: {
-            'Content-Type': 'application/json',
-            'X-DevKey': process.env.GUNBROKER_DEVKEY,
-            'X-AccessToken': token
-          },
-        }).then((response) => {
-          // get item IDs of all listings returned
-          
-          for(const listing in response.data.results){
-            listings.push(response.data.results[listing].itemID);
-          }
-        }).catch(function (error) {
-          console.log(error);
-          reject(new Error(error));
+  return new Promise((resolve,reject) => {
+    WooCommerce.get("products?per_page=100")
+  .then(async function (response) {
+    let pages = response.headers['x-wp-totalpages'];
+    let listings = [];
+    for(let x = 0; x < pages; x++){
+      let offset = (x * 100);
+      await WooCommerce.get("products?per_page=100&offset=" + offset)
+      .then(function (response) {
+        response.data.map((item) => {
+          let newListing = {};
+          newListing.id = item.id;
+          newListing.upc = parseInt(item.sku);
+          newListing.quantity = item.stock_quantity;
+    
+          listings.push(newListing);
         });
-      }
-      resolve(listings);
-    })
-    .catch(function (error) {
-      console.log(error);
-      reject(new Error(error));
-    });
+      }).catch(function (error) {
+        console.log(error);
+        reject(new Error(error));
+      });
+    }
+    resolve(listings);
+  })
+  .catch(function (error) {
+    console.log(error);
+    reject(new Error(error));
+  });
   });
 }
 
@@ -353,30 +387,16 @@ async function getSSInventory(){
   });
 }
 
-async function getListing(itemNo){
-  return new Promise( async (resolve,reject)=>{
-    let token = await GunBrokerAccessToken;
-    await axios.get('https://api.gunbroker.com/v1/Items/' + itemNo,{
-      headers: {
-        'Content-Type': 'application/json',
-        'X-DevKey': process.env.GUNBROKER_DEVKEY,
-        'X-AccessToken': token,
-        "User-Agent": "axios 0.21.1"
-      },
-    }).then((response) => {
-      resolve({upc: response.data.upc, price: response.data.buyPrice, quantity: response.data.quantity});
-    }).catch((error) => {
-      reject(error);
-    })
-  });
+async function updateListing(listing, quantityAvailable){
+
 }
 
 async function checkAllListings(){
-  // Get every Gunbroker listing item No
-  logProcess("Getting all GunBroker listings");
+  // Get every SEC listing item No
+  logProcess("Getting all SEC Guns listings");
   let listings = await getAllListings();
 
-  // Get every listing from Lipseys, Davidsons, and RSR
+  // Get every listing from Lipseys, Davidsons, RSR, and SportsSouth
   logProcess("Getting Lipseys Inventory");
   let LipseysInventory = await getLipseysInventory();
   logProcess("Getting Davidsons Inventory");
@@ -388,10 +408,10 @@ async function checkAllListings(){
 
   let potentialDeletes = [];
 
-  // Loop through every gunbroker listing
+  // Loop through every SEC Guns listing
   console.log(chalk.green.bold("Checking " + listings.length + " listings."));
   for(let i = 0; i < listings.length; i++){
-    let listing = await getListing(listings[i]).catch((error) => {console.log(error)});
+    let listing = listings[i];
 
     if(listing){
       let lipseysResults = await LipseysInventory.find(item => item.upc == listing.upc);
@@ -405,7 +425,11 @@ async function checkAllListings(){
 
       let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity + SSResults.quantity;
 
-      if(listing.quantity > totalAvailableQuantity){
+      console.log("SEC Quantity", listing.quantity);
+      console.log("Vendors Quantity", totalAvailableQuantity);
+      console.log("--------------------------------------------------------")
+
+      if(listing.quantity > (totalAvailableQuantity - 10)){
         if(listing.upc){
           potentialDeletes.push(listing.upc);
 
@@ -422,7 +446,7 @@ async function checkAllListings(){
 
   var file = fs.createWriteStream('GunBrokerUPCChecks.txt');
   file.on('error', function(err) { console.log(err) });
-  file.write("These UPCs are listed on GunBroker but may not be available (checked Lipseys, Davidsons, and RSR Group)\n");
+  file.write("These UPCs are listed on SEC Guns but may not be available (checked Lipseys, Davidsons, and RSR Group)\n");
   potentialDeletes.forEach(function(upc) { file.write(upc + '\n'); });
   file.end();
 }
@@ -451,3 +475,4 @@ async function postAll(){
 //checkAllListings();
 //postSSProducts();
 postLipseysProducts();
+//postDavidsonsProducts(0);

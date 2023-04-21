@@ -126,17 +126,17 @@ function filterInventory(inventory){
   logProcess("Filtering Results...");
   let lowestQuantityAllowed = 20;
   let lowestPriceAllowed = 150;
-  let highestPriceAllowed = 2000;
   let typesAllowed = ['Pistol: Semi-Auto','Pistol','Rifle: Semi-Auto','Rifle: Bolt Action','Rifle: Lever Action','Rifle: Pump Action','Rifle','Revolver','Shotgun: Pump Action',
   'Shotgun: Over and Under','Shotgun: Semi-Auto','Shotgun: Lever Action','Shotgun: Single Shot','Shotgun: Bolt Action','Shotgun: Side by Side'];
   let filtered = [];
   
   inventory.map( async (item) => {
-    if(item.Quantity >= lowestQuantityAllowed && typesAllowed.includes(item.GunType) && item.DealerPrice > lowestPriceAllowed && item.DealerPrice < highestPriceAllowed && item.UPCCode.toString().length == 12){
+    if(item.Quantity >= lowestQuantityAllowed && typesAllowed.includes(item.GunType) && item.DealerPrice > lowestPriceAllowed){
       filtered.push(item);
     }
   });
   console.log(inventory.length + " to " + filtered.length);
+  console.log(filtered);
   return filtered;
 }
 
@@ -164,7 +164,7 @@ function postOnGunBroker(item){
       let cost = item.DealerPrice;
       let map = item.map; 
 
-      price = cost * 1.15; // set price to cost of gun plus 15% then round to 2 decimals
+      price = cost * 1.11; // set price to cost of gun plus 11% then round to 2 decimals
       price = (Math.round(price * 100) / 100).toFixed(2);
 
       if(price < map){ // if new price is lower than map, set price to map
@@ -381,8 +381,8 @@ async function postAllListings(listings, limit){
 async function postDavidsonsProducts(limit){
   let inventory = await getInventory();
   let filteredInventory = filterInventory(inventory);
-  let countPosted = await postAllListings(filteredInventory, limit);
-  return countPosted;
+  //let countPosted = await postAllListings(filteredInventory, limit);
+  //return countPosted;
 }
 
 export {postDavidsonsProducts};

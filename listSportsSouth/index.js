@@ -167,7 +167,7 @@ function postOnGunBroker(item){
       let cost = item.price;
       let map = item.map;
 
-      price = cost * 1.15; // set price to cost of gun plus 15% then round to 2 decimals
+      price = cost * 1.11; // set price to cost of gun plus 11% then round to 2 decimals
       price = (Math.round(price * 100) / 100).toFixed(2);
 
       if(price < map){ // if new price is lower than map, set price to map

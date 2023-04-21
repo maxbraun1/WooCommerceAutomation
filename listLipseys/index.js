@@ -65,15 +65,24 @@ function postOnSEC(item, imageLocation){
       let cost = item.price;
       let map = item.retailMap; // Map will be number, 0 if there is no map
 
-      price = cost * 1.9; // set price to cost of gun plus 15% then round to 2 decimals
+      price = cost * 1.11; // set price to cost of gun plus 11% then round to 2 decimals
       price = (Math.round(price * 100) / 100).toFixed(2);
 
       if(price < map){ // if new price is lower than map, set price to map
         price = map;
       }
 
-      // Setting Attributes
+      // if no MSRP is given, set regular price to calculated sale price
+      let regPrice;
+      if(item.msrp){ regPrice = item.msrp }
+      else{ regPrice = price }
 
+      // regular price cant be higher than sale price. If it is, set regular price to sale price
+      if(regPrice < price){
+        regPrice = price;
+      }
+
+      // Setting Attributes
       let attributes = [
         {
           id: 10,
@@ -87,7 +96,7 @@ function postOnSEC(item, imageLocation){
           id: 8,
           name: 'is_firearm',
           position: 1,
-          visible: true,
+          visible: false,
           variation: false,
           options: [ 'YES' ]
         }
@@ -147,8 +156,13 @@ function postOnSEC(item, imageLocation){
         status: 'publish',
         description: descriptionGenerator(item),
         sku: item.upc,
-        regular_price: item.msrp.toString(),
+        regular_price: regPrice.toString(),
         sale_price: price.toString(),
+        date_on_sale_from: null,
+        date_on_sale_from_gmt: null,
+        date_on_sale_to: null,
+        date_on_sale_to_gmt: null,
+        on_sale: false,
         manage_stock: true,
         stock_quantity: quantity,
         categories: categories,
@@ -186,10 +200,11 @@ function postOnSEC(item, imageLocation){
       await WooCommerce.post('products', data)
       .then(function (response) {
         console.log(chalk.green.bold("Product posted with ID "+response.data.id));
+        console.log(response.data.attributes[0].options);
       })
       .catch(function (error) {
-        console.log(error.data);
-        reject(error.data);
+        console.log(error);
+        reject(error);
         return;
       });
 
