@@ -169,7 +169,7 @@ function postOnSEC(item, imageLocation){
         attributes: attributes,
         shipping_class: ShippingClass,
         brands: [await determineBrand(item.manufacturer)],
-        tags: [ { name:item.manufacturer }, { name:item.caliberGauge }, { name:item.model }, { name:item.action }, { name:item.type }, { name:item.finish } ],
+        tags: [ { name:item.manufacturer }, { name:item.caliberGauge }, { name:item.model }, { name:item.action }, { name:item.type }, { name:item.finish }, { name: 'ap' } ],
         images: [
           {
             src: "https://secguns.com/" + imageLocation,
@@ -217,6 +217,43 @@ function postOnSEC(item, imageLocation){
   });
 }
 
+async function updateQuantity(item){
+  await WooCommerce.get("products/?sku="+item.upc)
+  .then(async (response) => {
+    let quantityPosted = response.data[0].stock_quantity;
+    let productID = response.data[0].id;
+    if(quantityPosted == 0){
+      // Setting Quantity
+      let quantity;
+
+      if(item.quantity >= 50){
+        quantity = 10;
+      }else if(item.quantity < 50 && item.quantity >= 20){
+        quantity = 5;
+      }else{
+        return;
+      }
+
+      // Update Quantity
+      const data = {
+        stock_quantity: quantity
+      };
+      
+      await WooCommerce.put("products/"+productID, data)
+      .then((response) => {
+        console.log(chalk.green.bold("[" + item.upc + "] Item quantity updated."));
+      })
+      .catch((error) => {
+        console.log(error.response.data);
+      });
+
+    }
+  })
+  .catch((error) => {
+    console.log(error.response.data);
+  });
+}
+
 async function postAllItems(listings, limit){
 
   logProcess("Posting " + chalk.bold.green(listings.length) + " items on SEC");
@@ -236,6 +273,7 @@ async function postAllItems(listings, limit){
     let alreadyPosted = await checkAlreadyPosted(item.upc);
     if(alreadyPosted){
       console.log(chalk.bold.blue.bgWhite(" Lipseys Item "+ count + " / " + listings.length + " ") + chalk.bold.yellow(" ["+item.upc+"] Item already posted."));
+      await updateQuantity(item);
     }else{
       await generateImages("https://www.lipseyscloud.com/images/"+item.imageName, item.upc)
       .then( async (imageLocation) => {

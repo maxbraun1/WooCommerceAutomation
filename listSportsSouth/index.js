@@ -162,7 +162,6 @@ function postOnGunBroker(item){
 
       // Setting Price
       let price;
-      // Davidsons doesnt provide a MAP price
 
       let cost = item.price;
       let map = item.map;

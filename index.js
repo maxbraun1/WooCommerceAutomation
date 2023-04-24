@@ -49,6 +49,37 @@ function logProcess(message, type){
   }
 }
 
+function prices(distPrice, map){
+  // Setting Price
+  let price;
+
+  let cost = item.price;
+  //let map = item.retailMap; // Map will be number, 0 if there is no map
+
+  price = cost * 1.11; // set price to cost of gun plus 11% then round to 2 decimals
+  price = (Math.round(price * 100) / 100).toFixed(2);
+
+  if(price < map){ // if new price is lower than map, set price to map
+    price = map;
+  }
+  
+  if(price < map){ // if new price is lower than map, set price to map
+    price = map;
+  }
+
+  // if no MSRP is given, set regular price to calculated sale price
+  let regPrice;
+  if(item.msrp){ regPrice = item.msrp }
+  else{ regPrice = price }
+
+  // regular price cant be higher than sale price. If it is, set regular price to sale price
+  if(regPrice < price){
+    regPrice = price;
+  }
+
+  return { regPrice: regPrice, salePrice: price }
+}
+
 // Brand
 let brands = [{name: "", id: null}];
 
@@ -197,6 +228,7 @@ function getAllListings(){
           newListing.id = item.id;
           newListing.upc = parseInt(item.sku);
           newListing.quantity = item.stock_quantity;
+          newListing.tags = item.tags;
     
           listings.push(newListing);
         });
@@ -387,10 +419,6 @@ async function getSSInventory(){
   });
 }
 
-async function updateListing(listing, quantityAvailable){
-
-}
-
 async function checkAllListings(){
   // Get every SEC listing item No
   logProcess("Getting all SEC Guns listings");
@@ -406,12 +434,14 @@ async function checkAllListings(){
   logProcess("Getting Sports South Inventory");
   let SSInventory = await getSSInventory();
 
-  let potentialDeletes = [];
-
   // Loop through every SEC Guns listing
   console.log(chalk.green.bold("Checking " + listings.length + " listings."));
   for(let i = 0; i < listings.length; i++){
     let listing = listings[i];
+
+    if(!listing.tags.find(tag => tag.name == 'ap')){
+      continue;
+    }
 
     if(listing){
       let lipseysResults = await LipseysInventory.find(item => item.upc == listing.upc);
@@ -425,30 +455,28 @@ async function checkAllListings(){
 
       let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity + SSResults.quantity;
 
-      console.log("SEC Quantity", listing.quantity);
-      console.log("Vendors Quantity", totalAvailableQuantity);
-      console.log("--------------------------------------------------------")
+      if(listing.quantity > (totalAvailableQuantity - 10) && listing.quantity != 0){
 
-      if(listing.quantity > (totalAvailableQuantity - 10)){
-        if(listing.upc){
-          potentialDeletes.push(listing.upc);
+        // if quantity listed is less than quantity available minus 10, set quantity to 0
 
-          console.log(chalk.bold.bgYellow.black("--- Potential Delete ---"));
-          console.log(chalk.red.bold(listing.upc + " (" +listing.quantity + " listed)"));
-          console.log(chalk.bold.white(lipseysResults.quantity + " listed on Lipseys"));
-          console.log(chalk.bold.white(davidsonsResults.quantity + " listed on Davidsons"));
-          console.log(chalk.bold.white(RSRResults.quantity + " listed on RSR"));
-          console.log(chalk.bold.white(SSResults.quantity + " listed on Sports South"));
-        }
+        const data = {
+          stock_quantity: 0
+        };
+        
+        await WooCommerce.put("products/"+listing.id, data)
+        .then((response) => {
+          console.log(chalk.bold.red("Listing QTY: " + listing.quantity + " | Vendor QTY: " + totalAvailableQuantity));
+          console.log(chalk.bold.yellow("[" + listing.upc + "] Item quantity set to 0."));
+        })
+        .catch((error) => {
+          console.log("error", error);
+        });
+
       }
     }
   }
-
-  var file = fs.createWriteStream('GunBrokerUPCChecks.txt');
-  file.on('error', function(err) { console.log(err) });
-  file.write("These UPCs are listed on SEC Guns but may not be available (checked Lipseys, Davidsons, and RSR Group)\n");
-  potentialDeletes.forEach(function(upc) { file.write(upc + '\n'); });
-  file.end();
+  console.log("done");
+  return;
 }
 
 export {logProcess, checkAlreadyPosted, LipseyAuthToken, determineBrand, determineCaliber, client};
@@ -472,7 +500,7 @@ async function postAll(){
 
 // START
 //postAll();
-//checkAllListings();
+checkAllListings();
 //postSSProducts();
-postLipseysProducts();
+//postLipseysProducts();
 //postDavidsonsProducts(0);
