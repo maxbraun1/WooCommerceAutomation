@@ -1,11 +1,11 @@
 import axios from 'axios';
 import fs from 'fs';
 import * as dotenv from 'dotenv';
-import descriptionGenerator from './descriptionGenerator.js';
-import { generateImages } from '../imageGenerator.js';
+import descriptionGenerator from './util/descriptionGenerator.js';
+import { generateImages } from './imageGenerator.js';
 import chalk from 'chalk';
-import { logProcess } from '../index.js';
-import { checkAlreadyPosted  } from '../index.js';
+import { logProcess } from './index.js';
+import { checkAlreadyPosted  } from './index.js';
 import { xml2js } from 'xml-js';
 import decodeHtml from 'decode-html';
 
@@ -31,7 +31,7 @@ async function getInventory(){
   });
 }
 
-function formatInventory(data){
+function organizeInventory(data){
   return new Promise(async (resolve,reject) => {
     console.log("Formatting "+data.length+" products");
     // Get Manufacturers
@@ -145,7 +145,76 @@ function filterInventory(inventory){
     }
   });
   console.log(inventory.length + " to " + filtered.length);
+  console.log(filtered);
   return filtered;
+}
+
+async function normalizeInventory(dataset){
+  let formattedInventory = [];
+  dataset.map((item) => {
+    let newItem = {};
+
+    newItem.cost = item.price;
+    newItem.upc = item.upc;
+    newItem.imgURL = item.img;
+    newItem.map = item.map;
+    newItem.desc = item.desc;
+    newItem.quantity = item.quantity;
+    newItem.caliber = item.caliber;
+    newItem.manufacturer = item.manufacturer.toLowerCase();
+    newItem.action = item.action;
+    newItem.capacity = item.capacity;
+    newItem.model = item.model;
+
+    newItem.extra = {
+      oal: ["Overall Length", item.OverallLength],
+      finish: ["Finish", item.Finish],
+      sights: ["Sights", item.Sights],
+      barrelLength: ["Barrel Length", item.BarrelLength]
+    };
+
+    formattedInventory.push(newItem);
+  });
+
+  console.log(formattedInventory);
+  return formattedInventory;
+}
+
+function findCategory(category, action){
+  let categories;
+  let shippingClass = 'firearm';
+  switch(category) {
+    case 'SHOTGUNS':
+      shippingClass = 'rifle-shotgun-pistol';
+      categories = [ { id: 74 }, { id: 82 } ];
+      break;
+    case 'PISTOLS':
+      shippingClass = 'handgun-revolver';
+      categories = [ { id: 74 }, { id: 79 }, { id: 81 } ];
+      break;
+    case 'RIFLES':
+      shippingClass = 'rifle-shotgun-pistol';
+      switch (action) {
+        case 'Semi-Auto':
+          categories = [ { id: 74 }, { id: 78 }, { id: 173 } ];
+          break;
+        case 'Bolt':
+          categories = [ { id: 74 }, { id: 78 }, { id: 169 } ];
+          break;
+        default:
+          categories = [ { id: 74 }, { id: 78 } ];
+          break;
+      }
+      break;
+    case 'REVOLVERS':
+      shippingClass = 'handgun-revolver';
+      categories = [ { id: 74 }, { id: 79 }, { id: 80 } ];
+      break;
+    default:
+      categories = [ { id: 74 } ];
+  }
+  
+  return { categories: categories, shippingClass: shippingClass }
 }
 
 function postOnGunBroker(item){
@@ -408,11 +477,16 @@ async function postAllListings(listings, limit){
 }
 
 async function postSSProducts(limit){
-  let UnformatedInventory = await getInventory();
-  let inventory = await formatInventory(UnformatedInventory);
+  let unorganizedInventory = await getInventory();
+  let inventory = await organizeInventory(unorganizedInventory);
   let filteredInventory = await filterInventory(inventory);
+  let normalizedInventory = await normalizeInventory(filteredInventory);
+  console.log(normalizedInventory);
+
+  /*
   let countPosted = await postAllListings(filteredInventory, limit);
   return countPosted;
+  */
 }
 
 export {postSSProducts};

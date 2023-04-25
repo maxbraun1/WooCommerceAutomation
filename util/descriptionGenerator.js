@@ -2,23 +2,16 @@ function descriptionGenerator(item){
     let html = "";
 
     html = html + "<table>";
-    if(item.manufacturer != null && item.model != null && item.upc != null){ html = html + "<tr><td>Description</td><td>"+item.manufacturer + " " + item.model + " " + item.upc+"</td></tr>" };
-    if(item.type != null){ html = html + "<tr><td>Type</td><td>"+item.type+"</td></tr>" };
-    if(item.caliberGauge != null){ html = html + "<tr><td>Caliber</td><td>"+item.caliberGauge+"</td></tr>" };
-    if(item.action != null){ html = html + "<tr><td>Action</td><td>"+item.action+"</td></tr>" };
-    if(item.capacity != null){ html = html + "<tr><td>Capacity</td><td>"+item.capacity+"</td></tr>" };
-    if(item.overallLength != null){ html = html + "<tr><td>Overall Length</td><td>"+item.overallLength+"</td></tr>" };
-    if(item.weight != null){ html = html + "<tr><td>Weight</td><td>"+item.weight+"</td></tr>" };
-    if(item.safety != null){ html = html + "<tr><td>Safety</td><td>"+item.safety+"</td></tr>" };
-    if(item.frame != null){ html = html + "<tr><td>Frame Type</td><td>"+item.frame+"</td></tr>" };
-    if(item.finish != null){ html = html + "<tr><td>Finish</td><td>"+item.finish+"</td></tr>" };
-    if(item.sights != null){ html = html + "<tr><td>Sights</td><td>"+item.sights+"</td></tr>" };
-    if(item.sightsType != null){ html = html + "<tr><td>Sights Type</td><td>"+item.sightsType+"</td></tr>" };
-    if(item.stockFrameGrips != null){ html = html + "<tr><td>Grips</td><td>"+item.stockFrameGrips+"</td></tr>" };
-    if(item.magazine != null){ html = html + "<tr><td>Magazine(s)</td><td>"+item.magazine+"</td></tr>" };
-    if(item.additionalFeature1 != null){ html = html + "<tr><td>Additional Feature</td><td>"+item.additionalFeature1+"</td></tr>" };
-    if(item.additionalFeature2 != null){ html = html + "<tr><td>Additional Feature</td><td>"+item.additionalFeature2+"</td></tr>" };
-    if(item.additionalFeature3 != null){ html = html + "<tr><td>Additional Feature</td><td>"+item.additionalFeature3+"</td></tr>" };
+    if(item.desc){ html = html + "<tr><td>Description</td><td>"+item.desc+"</td></tr>" }
+    if(item.caliber){ html = html + "<tr><td>Caliber</td><td>"+item.caliber+"</td></tr>" }
+    if(item.action){ html = html + "<tr><td>Action</td><td>"+item.action+"</td></tr>" }
+    if(item.capacity){ html = html + "<tr><td>Capacity</td><td>"+item.capacity+"</td></tr>" }
+    if(item.model){ html = html + "<tr><td>Model</td><td>"+item.model+"</td></tr>" }
+    
+    item.extra.foreach((item) => {
+        if(item[1]){ html = html + "<tr><td>"+item[0]+"</td><td>"+item[1]+"</td></tr>" }
+    });
+
     html = html + "</table><br>"
 
     html = html + "<span style='color:red;font-weight:bold'>ALL FIREARMS MUST BE SHIPPED TO A CURRENT FEDERAL FIREARMS LICENSED DEALER (FFL DEALER)</span><br>"

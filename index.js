@@ -6,10 +6,10 @@ import * as ftp from 'basic-ftp';
 import csvToJson from 'convert-csv-to-json';
 import decodeHtml from 'decode-html';
 import { xml2js } from 'xml-js';
-import { postLipseysProducts } from './listLipseys/index.js';
-import { postDavidsonsProducts } from './listDavidsons/index.js';
-import { postRSRProducts } from './listRSR/index.js';
-import { postSSProducts } from './listSportsSouth/index.js';
+import { prepLipseysInventory } from './lipseys.js';
+import { postDavidsonsProducts } from './davidsons.js';
+import { postRSRProducts } from './rsr.js';
+import { postSSProducts } from './sportssouth.js';
 import stringSimilarity from 'string-similarity';
 import pkg from '@woocommerce/woocommerce-rest-api';
 import SFTPClient from 'ssh2-sftp-client';
@@ -47,37 +47,6 @@ function logProcess(message, type){
       default:
         console.log(chalk.magenta(message));
   }
-}
-
-function prices(distPrice, map){
-  // Setting Price
-  let price;
-
-  let cost = item.price;
-  //let map = item.retailMap; // Map will be number, 0 if there is no map
-
-  price = cost * 1.11; // set price to cost of gun plus 11% then round to 2 decimals
-  price = (Math.round(price * 100) / 100).toFixed(2);
-
-  if(price < map){ // if new price is lower than map, set price to map
-    price = map;
-  }
-  
-  if(price < map){ // if new price is lower than map, set price to map
-    price = map;
-  }
-
-  // if no MSRP is given, set regular price to calculated sale price
-  let regPrice;
-  if(item.msrp){ regPrice = item.msrp }
-  else{ regPrice = price }
-
-  // regular price cant be higher than sale price. If it is, set regular price to sale price
-  if(regPrice < price){
-    regPrice = price;
-  }
-
-  return { regPrice: regPrice, salePrice: price }
 }
 
 // Brand
@@ -205,7 +174,6 @@ function checkAlreadyPosted(upc){
       }else{
         resolve(false);
       }
-      //console.log(response.data);
     })
     .catch((error) => {
       console.log(error.response.data);
@@ -483,24 +451,16 @@ export {logProcess, checkAlreadyPosted, LipseyAuthToken, determineBrand, determi
 
 // RUN PROCESS
 
-async function postAll(){
-  console.log(chalk.green.bold("Posting Lipseys products..."));
-  let lispeysPostCount = await postLipseysProducts();
+async function post(){
+  let lipseysInventory = await prepLipseysInventory();
   
-  console.log(chalk.green.bold("Posting RSR products..."));
-  let RSRPostCount = await postRSRProducts();
-
-  console.log(chalk.green.bold("Posting Davidsons products..."));
-  let davidsonsPostCount = await postDavidsonsProducts();
-
-  let totalPosted = lispeysPostCount + davidsonsPostCount + RSRPostCount;
-
-  console.log(chalk.green.bold(totalPosted + " listings posted."));
+  console.log(lipseysInventory);
 }
 
 // START
-//postAll();
-checkAllListings();
+post();
+//checkAllListings();
 //postSSProducts();
 //postLipseysProducts();
-//postDavidsonsProducts(0);
+//postDavidsonsProducts();
+//postRSRProducts();

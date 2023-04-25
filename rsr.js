@@ -1,13 +1,13 @@
 import axios from 'axios';
 import fs from 'fs';
 import * as dotenv from 'dotenv';
-import descriptionGenerator from './descriptionGenerator.js';
-import { generateImages } from '../imageGenerator.js';
+import descriptionGenerator from './util/descriptionGenerator.js';
+import { generateImages } from './imageGenerator.js';
 import chalk from 'chalk';
 import csvToJson from 'convert-csv-to-json/src/csvToJson.js';
 import * as ftp from 'basic-ftp';
-import { logProcess } from '../index.js';
-import { checkAlreadyPosted  } from '../index.js';
+import { logProcess } from './index.js';
+import { checkAlreadyPosted  } from './index.js';
 
 dotenv.config();
 
@@ -22,12 +22,12 @@ async function getInventoryFiles(){
           secure: false
       });
       //console.log(await client.list());
-      await client.downloadTo("rsrinventory.txt", "ftpdownloads/rsrinventory-new.txt");
-      await client.downloadTo("attributes.txt", "ftpdownloads/attributes-all.txt");
+      await client.downloadTo("files/rsrinventory.txt", "ftpdownloads/rsrinventory-new.txt");
+      await client.downloadTo("files/attributes.txt", "ftpdownloads/attributes-all.txt");
 
       // Add headers to inventory file
-      const InventoryData = fs.readFileSync('rsrinventory.txt')
-      const Inventoryfd = fs.openSync('rsrinventory.txt', 'w+')
+      const InventoryData = fs.readFileSync('files/rsrinventory.txt')
+      const Inventoryfd = fs.openSync('files/rsrinventory.txt', 'w+')
       const InventoryHeaders = "stockNo;upc;description;dept;manufacturerId;retailPrice;rsrPrice;weight;quantity;model;mfgName;mfgPartNo;status;longDescription;imgName;AK;AL;AR;AZ;CA;CO;CT;DC;DE;FL;GA;HI;IA;ID;IL;IN;KS;KY;LA;MA;MD;ME;MI;MN;MO;MS;MT;NC;ND;NE;NH;NJ;NM;NV;NY;OH;OK;OR;PA;RI;SC;SD;TN;TX;UT;VA;VT;WA;WI;WV;WY;groundShipmentsOnly;adultSigRequired;noDropShip;date;retailMAP;imageDisclaimer;length;width;height;prop65;vendorApprovalRequired\n";
       const InventoryInsert = Buffer.from(InventoryHeaders);
       fs.writeSync(Inventoryfd, InventoryInsert, 0, InventoryInsert.length, 0)
@@ -37,8 +37,8 @@ async function getInventoryFiles(){
       });
 
       // Add headers to attributes file
-      const AttributesData = fs.readFileSync('attributes.txt')
-      const Attributesfd = fs.openSync('attributes.txt', 'w+')
+      const AttributesData = fs.readFileSync('files/attributes.txt')
+      const Attributesfd = fs.openSync('files/attributes.txt', 'w+')
       const AttributesHeaders = "stockNo;manufacturerId;accessories;action;typeOfBarrel;barrelLength;catalogCode;chamber;chokes;condition;capacity;description;dram;edge;firingCasing;finish;fit;fit2;fps;frame;caliber;caliber2;grainWeight;grips;hand;mfg;mfgPartNo;weight;moa;model;model2;newStockNo;nsn;objective;ounceOfShot;packaging;power;reticle;safety;sights;size;type;unitsPerBox;unitsPerCase;wtCharacteristics;subCategory;diameter;color;material;stock;lensColor;handleColor;x;y;z\n";
       const AttributesInsert = Buffer.from(AttributesHeaders);
       fs.writeSync(Attributesfd, AttributesInsert, 0, AttributesInsert.length, 0)
@@ -95,6 +95,7 @@ function filterProducts(products, productInfo){
       }
     }
   });
+  console.log(filtered);
   return filtered;
 }
 

@@ -1,13 +1,14 @@
 import axios from 'axios';
 import fs from 'fs';
 import * as dotenv from 'dotenv';
-import descriptionGenerator from './descriptionGenerator.js';
-import { generateImages } from '../imageGenerator.js';
+import descriptionGenerator from './util/descriptionGenerator.js';
+import { generateImages } from './imageGenerator.js';
 import chalk from 'chalk';
-import { determineBrand, determineCaliber, logProcess } from '../index.js';
-import { checkAlreadyPosted  } from '../index.js';
-import { LipseyAuthToken } from '../index.js';
-import { WooCommerce } from '../index.js';
+import { determineBrand, logProcess } from './index.js';
+import { checkAlreadyPosted  } from './index.js';
+import { LipseyAuthToken } from './index.js';
+import { WooCommerce } from './index.js';
+import {generateAttributes, generatePrices, generateQuantity, generateTitle} from './util/util.js';
 
 dotenv.config();
 
@@ -42,134 +43,114 @@ async function filterInventory(dataset){
   return filtered;
 }
 
+async function normalizeInventory(dataset){
+  let formattedInventory = [];
+  dataset.map((item) => {
+    let cat = findCategory(item.type, item.action);
+    let newItem = {};
+
+    newItem.cost = item.price;
+    newItem.upc = parseInt(item.upc);
+    newItem.imgURL = 'https://www.lipseyscloud.com/images/'+item.imageName;
+    newItem.map = item.retailMap;
+    newItem.desc = item.description1;
+    newItem.quantity = item.quantity;
+    newItem.caliber = item.caliberGauge;
+    newItem.manufacturer = item.manufacturer;
+    newItem.action = item.action;
+    newItem.capacity = item.capacity;
+    newItem.model = item.model;
+    newItem.categories = cat.categories;
+    newItem.shippingClass = cat.shippingClass;
+
+    newItem.extra = [
+      ["Overall Length", item.overallLength],
+      ["Finish", item.finish],
+      ["Sights", item.sightsType],
+      ["Barrel Length", item.barrelLength]
+    ];
+
+    formattedInventory.push(newItem);
+  });
+
+  console.log(formattedInventory);
+  return formattedInventory;
+}
+
+function findCategory(type, action){
+  // Setting Category IDs and Shipping Prices
+  let categories;
+  let shippingClass = 'firearm';
+
+  switch(type) {
+    case 'Semi-Auto Pistol':
+      shippingClass = 'handgun-revolver';
+      categories = [ { id: 74 }, { id: 79 }, { id: 81 } ];
+      break;
+    case 'Rifle':
+      shippingClass = 'rifle-shotgun-pistol';
+      switch (action) {
+        case 'Semi-Auto':
+          categories = [ { id: 74 }, { id: 78 }, { id: 173 } ];
+          break;
+        case 'Single Shot':
+          categories = [ { id: 74 }, { id: 78 } ];
+          break;
+        case 'Pump Action':
+          categories = [ { id: 74 }, { id: 78 } ];
+          break;
+        case 'Bolt Action':
+          categories = [ { id: 74 }, { id: 78 }, { id: 169 } ];
+          break;
+        case 'Lever Action':
+          categories = [ { id: 74 }, { id: 78 } ];
+          break;
+        default:
+          categories = [ { id: 74 }, { id: 78 }];
+      }
+      break;
+    case 'Revolver':
+      shippingClass = 'handgun-revolver';
+      categories = [ { id: 74 }, { id: 79 }, { id: 80 } ];
+      break;
+    case 'Shotgun':
+      shippingClass = 'rifle-shotgun-pistol';
+      categories = [ { id: 74 }, { id: 82 } ];
+      break;
+    default:
+      categories = [ { id: 74 } ];
+  }
+  return { categories: categories, shippingClass: shippingClass}
+}
+
 function postOnSEC(item, imageLocation){
 
   return new Promise( async (resolve, reject) => {
 
     try{
+      let prices = generatePrices(item);
+      let title = generateTitle(item);
 
-      // Setting Quantity
-      let quantity;
-
-      if(item.quantity >= 50){
-        quantity = 10;
-      }else if(item.quantity < 50 && item.quantity >= 20){
-        quantity = 5;
-      }else{
-        return;
-      }
-
-      // Setting Price
-      let price;
-
-      let cost = item.price;
-      let map = item.retailMap; // Map will be number, 0 if there is no map
-
-      price = cost * 1.11; // set price to cost of gun plus 11% then round to 2 decimals
-      price = (Math.round(price * 100) / 100).toFixed(2);
-
-      if(price < map){ // if new price is lower than map, set price to map
-        price = map;
-      }
-
-      // if no MSRP is given, set regular price to calculated sale price
-      let regPrice;
-      if(item.msrp){ regPrice = item.msrp }
-      else{ regPrice = price }
-
-      // regular price cant be higher than sale price. If it is, set regular price to sale price
-      if(regPrice < price){
-        regPrice = price;
-      }
-
-      // Setting Attributes
-      let attributes = [
-        {
-          id: 10,
-          name: 'Caliber',
-          position: 0,
-          visible: true,
-          variation: false,
-          options: [ item.caliberGauge ]
-        },
-        {
-          id: 8,
-          name: 'is_firearm',
-          position: 1,
-          visible: false,
-          variation: false,
-          options: [ 'YES' ]
-        }
-      ]
-      
-      // Setting Category IDs and Shipping Prices
-      let categories;
-      let ShippingClass = 'firearm';
-
-      switch(item.type) {
-        case 'Semi-Auto Pistol':
-          ShippingClass = 'handgun-revolver';
-          categories = [ { id: 74 }, { id: 79 }, { id: 81 } ];
-          break;
-        case 'Rifle':
-          ShippingClass = 'rifle-shotgun-pistol';
-          switch (item.action) {
-            case 'Semi-Auto':
-              categories = [ { id: 74 }, { id: 78 }, { id: 173 } ];
-              break;
-            case 'Single Shot':
-              categories = [ { id: 74 }, { id: 78 } ];
-              break;
-            case 'Pump Action':
-              categories = [ { id: 74 }, { id: 78 } ];
-              break;
-            case 'Bolt Action':
-              categories = [ { id: 74 }, { id: 78 }, { id: 169 } ];
-              break;
-            case 'Lever Action':
-              categories = [ { id: 74 }, { id: 78 } ];
-              break;
-            default:
-              categories = [ { id: 74 }, { id: 78 }];
-          }
-          break;
-        case 'Revolver':
-          ShippingClass = 'handgun-revolver';
-          categories = [ { id: 74 }, { id: 79 }, { id: 80 } ];
-          break;
-        case 'Shotgun':
-          ShippingClass = 'rifle-shotgun-pistol';
-          categories = [ { id: 74 }, { id: 82 } ];
-          break;
-        default:
-          categories = [ { id: 74 } ];
-      }
-      
-      var title = item.manufacturer + " " + item.model + " " + item.caliberGauge + " " + item.capacity;
-
-      title = Array.from(new Set(title.split(' '))).toString();
-      title = title.replaceAll(",", " ");
-
-      // Prepare listing
+      // Prepare listing data
       var data = {
         name: title,
         status: 'publish',
         description: descriptionGenerator(item),
         sku: item.upc,
-        regular_price: regPrice.toString(),
-        sale_price: price.toString(),
+        regular_price: prices.regPrice.toString(),
+        sale_price: prices.salePrice.toString(),
         date_on_sale_from: null,
         date_on_sale_from_gmt: null,
         date_on_sale_to: null,
         date_on_sale_to_gmt: null,
         on_sale: false,
         manage_stock: true,
-        stock_quantity: quantity,
-        categories: categories,
-        attributes: attributes,
-        shipping_class: ShippingClass,
+        stock_quantity: generateQuantity(item),
+        categories: item.categories,
+        attributes: generateAttributes(item),
+        shipping_class: item.shippingClass,
         brands: [await determineBrand(item.manufacturer)],
-        tags: [ { name:item.manufacturer }, { name:item.caliberGauge }, { name:item.model }, { name:item.action }, { name:item.type }, { name:item.finish }, { name: 'ap' } ],
+        tags: [ { name:item.manufacturer }, { name:item.caliber }, { name:item.model }, { name:item.action }, { name: 'ap' } ],
         images: [
           {
             src: "https://secguns.com/" + imageLocation,
@@ -291,11 +272,11 @@ async function postAllItems(listings, limit){
   return countPosted;
 }
 
-async function postLipseysProducts(limit){
+async function prepLipseysInventory(){
   let inventory = await getInventory().catch((error) => console.log(error));
   let filteredInventory = await filterInventory(inventory);
-  let countPosted = await postAllItems(filteredInventory, limit);
-  return countPosted;
+  let normalizedInventory = await normalizeInventory(filteredInventory);
+  return normalizedInventory;
 }
 
-export {postLipseysProducts};
+export {prepLipseysInventory};

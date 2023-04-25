@@ -1,13 +1,13 @@
 import axios from 'axios';
 import fs from 'fs';
 import * as dotenv from 'dotenv';
-import descriptionGenerator from './descriptionGenerator.js';
-import { generateImages } from '../imageGenerator.js';
+import descriptionGenerator from './util/descriptionGenerator.js';
+import { generateImages } from './imageGenerator.js';
 import chalk from 'chalk';
 import * as ftp from 'basic-ftp';
 import csvToJson from 'convert-csv-to-json/src/csvToJson.js';
-import { logProcess } from '../index.js';
-import { checkAlreadyPosted  } from '../index.js';
+import { logProcess } from './index.js';
+import { checkAlreadyPosted  } from './index.js';
 
 dotenv.config();
 
@@ -21,9 +21,9 @@ async function getInventoryFile(){
           password: process.env.DAVIDSONS_FTP_PASSWORD,
           secure: false
       });
-      await client.downloadTo("davidsons_inventory.csv", "davidsons_inventory.csv");
-      await client.downloadTo("DAV-inventory-with-MAP.txt", "DAV-inventory-with-MAP.txt");
-      await client.downloadTo("davidsons_quantity.csv", "davidsons_quantity.csv");
+      await client.downloadTo("files/davidsons_inventory.csv", "davidsons_inventory.csv");
+      await client.downloadTo("files/DAV-inventory-with-MAP.txt", "DAV-inventory-with-MAP.txt");
+      await client.downloadTo("files/davidsons_quantity.csv", "davidsons_quantity.csv");
   }
   catch(err) {
       console.log(err);
@@ -42,12 +42,12 @@ async function getInventory(){
   let shotgunMisc = ['Shotgun: Over and Under', 'Shotgun: Over And Under'];
   let shotgunMisc2 = ['Shotgun: Side by Side', 'Shotgun: Side By Side'];
 
-  const data = fs.readFileSync('DAV-inventory-with-MAP.txt', 'utf-8');
+  const data = fs.readFileSync('files/DAV-inventory-with-MAP.txt', 'utf-8');
   const result = String(data).replace(/["]+/g, '');
-  fs.writeFileSync('DAV-inventory-with-MAP.txt', result, 'utf-8');
+  fs.writeFileSync('files/DAV-inventory-with-MAP.txt', result, 'utf-8');
 
-  let productMAPs = csvToJson.fieldDelimiter('\t').formatValueByType().getJsonFromCsv('DAV-inventory-with-MAP.txt');
-  let DavidsonsQuantities = csvToJson.fieldDelimiter(',').getJsonFromCsv('davidsons_quantity.csv');
+  let productMAPs = csvToJson.fieldDelimiter('\t').formatValueByType().getJsonFromCsv('files/DAV-inventory-with-MAP.txt');
+  let DavidsonsQuantities = csvToJson.fieldDelimiter(',').getJsonFromCsv('files/davidsons_quantity.csv');
 
   productMAPs = productMAPs.map((item) => {
     let map;
@@ -63,7 +63,7 @@ async function getInventory(){
     return newItem;
   });
 
-  let products = csvToJson.fieldDelimiter(',').getJsonFromCsv('davidsons_inventory.csv');
+  let products = csvToJson.fieldDelimiter(',').getJsonFromCsv('files/davidsons_inventory.csv');
 
   let items = products.map((item) => {
 
@@ -136,8 +136,38 @@ function filterInventory(inventory){
     }
   });
   console.log(inventory.length + " to " + filtered.length);
-  console.log(filtered);
   return filtered;
+}
+
+async function normalizeInventory(dataset){
+  let formattedInventory = [];
+  dataset.map((item) => {
+    let newItem = {};
+
+    newItem.cost = item.DealerPrice;
+    newItem.upc = item.UPCCode;
+    newItem.imgURL = item.imageURL;
+    newItem.map = item.map;
+    newItem.desc = item.ItemDescription;
+    newItem.quantity = item.Quantity;
+    newItem.caliber = item.Caliber;
+    newItem.manufacturer = item.Manufacturer;
+    newItem.action = item.Action;
+    newItem.capacity = item.Capacity;
+    newItem.model = item.ModelSeries;
+
+    newItem.extra = {
+      oal: ["Overall Length", item.OverallLength],
+      finish: ["Finish", item.Finish],
+      sights: ["Sights", item.Sights],
+      barrelLength: ["Barrel Length", item.BarrelLength]
+    };
+
+    formattedInventory.push(newItem);
+  });
+
+  console.log(formattedInventory);
+  return formattedInventory;
 }
 
 function postOnGunBroker(item){
@@ -381,6 +411,7 @@ async function postAllListings(listings, limit){
 async function postDavidsonsProducts(limit){
   let inventory = await getInventory();
   let filteredInventory = filterInventory(inventory);
+  let normalizedInventory = normalizeInventory(filteredInventory);
   //let countPosted = await postAllListings(filteredInventory, limit);
   //return countPosted;
 }
