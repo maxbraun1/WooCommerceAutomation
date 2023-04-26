@@ -1,298 +1,201 @@
-import axios from 'axios';
-import fs from 'fs';
-import * as dotenv from 'dotenv';
-import chalk from 'chalk';
-import * as ftp from 'basic-ftp';
-import csvToJson from 'convert-csv-to-json';
-import decodeHtml from 'decode-html';
-import { xml2js } from 'xml-js';
-import { prepLipseysInventory } from './lipseys.js';
-import { postDavidsonsProducts } from './davidsons.js';
-import { postRSRProducts } from './rsr.js';
-import { postSSProducts } from './sportssouth.js';
-import stringSimilarity from 'string-similarity';
-import pkg from '@woocommerce/woocommerce-rest-api';
-import SFTPClient from 'ssh2-sftp-client';
+import axios from "axios";
+import fs from "fs";
+import * as dotenv from "dotenv";
+import chalk from "chalk";
+import * as ftp from "basic-ftp";
+import csvToJson from "convert-csv-to-json";
+import decodeHtml from "decode-html";
+import { xml2js } from "xml-js";
+import { prepLipseysInventory } from "./lipseys.js";
+import { prepDavidsonsInventory } from "./davidsons.js";
+import { postRSRProducts } from "./rsr.js";
+import { prepSSInventory } from "./sportssouth.js";
+import stringSimilarity from "string-similarity";
+import pkg from "@woocommerce/woocommerce-rest-api";
+import SFTPClient from "ssh2-sftp-client";
+import { postItem } from "./post.js";
+import { generateImages } from "./imageGenerator.js";
 const WooCommerceRestApi = pkg.default;
 
 dotenv.config();
 
-export const WooCommerce = new WooCommerceRestApi({
-  url: 'https://secguns.com',
+const WooCommerce = new WooCommerceRestApi({
+  url: "https://secguns.com",
   consumerKey: process.env.SEC_KEY,
   consumerSecret: process.env.SEC_SECRET,
-  version: "wc/v3"
+  version: "wc/v3",
 });
 
 let client = new SFTPClient();
 await client.connect({
   host: "secgunsdev.sftp.wpengine.com",
-  port: '2222',
+  port: "2222",
   user: process.env.SEC_FTP_USER,
-  password: process.env.SEC_FTP_PASS
+  password: process.env.SEC_FTP_PASS,
 });
 
-function logProcess(message, type){
-  console.log("_________________________________________________________________________________");
-  switch(type){
-    case 'good':
+function logProcess(message, type) {
+  console.log(
+    "_________________________________________________________________________________"
+  );
+  switch (type) {
+    case "good":
       console.log(chalk.green(message));
       break;
-      case 'bad':
-        console.log(chalk.red(message));
-        break;
-      case 'warning':
-        console.log(chalk.yellow(message));
-        break;
-      default:
-        console.log(chalk.magenta(message));
+    case "bad":
+      console.log(chalk.red(message));
+      break;
+    case "warning":
+      console.log(chalk.yellow(message));
+      break;
+    default:
+      console.log(chalk.magenta(message));
   }
 }
 
-// Brand
-let brands = [{name: "", id: null}];
-
-async function getBrands(){
-  // Gets all brands from SEC and returns as array of objects {name:[name], id:[id]}
-  await axios.get('https://secguns.com/wp-json/wc/v2/products/brands?per_page=100',{
-    auth: {
-      username: process.env.SEC_WORDPRESS_USER,
-      password: process.env.SEC_WORDPRESS_PASS
-    },
-  })
-  .then(async function (response) {
-    let pages = response.headers['x-wp-totalpages'];
-    let brandList = [];
-    for(let x = 0; x < pages; x++){
-      let offset = (x * 100);
-      await axios.get('https://secguns.com/wp-json/wc/v2/products/brands?per_page=100&offset=' + offset,{
-        auth: {
-          username: process.env.SEC_WORDPRESS_USER,
-          password: process.env.SEC_WORDPRESS_PASS
-        },
-      })
-      .then(async function (response) {
-        await response.data.map((item) => {
-          let newBrand = {};
-          newBrand.name = item.name;
-          newBrand.id = item.id;
-    
-          brandList.push(newBrand);
-        });
-      }).catch(function (error) {
-        console.log(error);
-      });
-    }
-    brands.push(...brandList);
-  })
-  .catch(function (error) {
-    console.log(error);
-  });
-};
-
-await getBrands();
-
-async function determineBrand(brand){
-  let brandNames = brands.map((item) => {return item.name.toLowerCase().replace("&amp;", "&")});
-  let match = stringSimilarity.findBestMatch(brand.toLowerCase(), brandNames);
-  let bestMatch = brands.find(item => item.name.toLowerCase().replace("&amp;", "&") === match.bestMatch.target);
-  
-  console.log("given '"+brand+"' found best match '"+bestMatch.name+"' with rating: "+match.bestMatch.rating);
-  if(match.bestMatch.rating >= 0.85){
-    return bestMatch.id;
-  }
-  // Brand doesn't exist, create brand
-  const data = {
-    name: brand,
-  };
-  
-  return await WooCommerce.post("products/brands", data)
-  .then((response) => {
-    console.log(chalk.bold.yellow("New Brand created: " + response.data.name));
-    brands.push({name: brand, id: response.data.id});
-    return response.data.id;
-  })
-  .catch((error) => {
-    console.log(error.data);
-    return null;
-  });
-}
-
-// Caliber
-let calibers = new Promise(async function(resolve, reject){ // Gets all calibers from SEC and returns as array of objects {name:[name], id:[id]}
-  WooCommerce.get("products/attributes/10/terms?per_page=100")
-  .then(async function (response) {
-    let pages = response.headers['x-wp-totalpages'];
-    let caliberList = [];
-    for(let x = 0; x < pages; x++){
-      let offset = (x * 100);
-      await WooCommerce.get("products/attributes/10/terms?per_page=100&offset=" + offset)
-      .then(function (response) {
-        response.data.map((item) => {
-          let newCaliber = {};
-          newCaliber.name = item.name;
-          newCaliber.id = item.id;
-    
-          caliberList.push(newCaliber);
-        });
-      }).catch(function (error) {
-        console.log(error);
-        reject(new Error(error));
-      });
-    }
-    resolve(caliberList);
-  })
-  .catch(function (error) {
-    console.log(error);
-    reject(new Error(error));
-  });
-});
-
-async function determineCaliber(caliber){
-  let caliberList = await calibers;
-  if(caliberList.length < 1){
-    return caliber;
-  }else{
-    let caliberNames = caliberList.map((item) => {return item.name});
-    let match = stringSimilarity.findBestMatch(caliber, caliberNames);
-    let bestMatch = caliberList.find(item => item.name === match.bestMatch.target);
-    if(match.bestMatch.rating >= 0.85){
-      console.log("Given '"+caliber+"', found '"+bestMatch.name+"' with "+match.bestMatch.rating*100+"% similarity.");
-      return bestMatch.name;
-    }else{
-      return caliber;
-    }
-  }
-}
-
-function checkAlreadyPosted(upc){
-  return new Promise( async (resolve, reject) => {
+function checkAlreadyPosted(upc) {
+  return new Promise(async (resolve, reject) => {
     WooCommerce.get("products/?sku=" + upc)
-    .then((response) => {
-      if(response.data.length > 0){
-        resolve(true);
-      }else{
-        resolve(false);
-      }
-    })
-    .catch((error) => {
-      console.log(error.response.data);
-    });
+      .then((response) => {
+        if (response.data.length > 0) {
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      })
+      .catch((error) => {
+        console.log(error.response.data);
+      });
   });
 }
 
-function getAllListings(){
-  return new Promise((resolve,reject) => {
+function getAllListings() {
+  return new Promise((resolve, reject) => {
     WooCommerce.get("products?per_page=100")
-  .then(async function (response) {
-    let pages = response.headers['x-wp-totalpages'];
-    let listings = [];
-    for(let x = 0; x < pages; x++){
-      let offset = (x * 100);
-      await WooCommerce.get("products?per_page=100&offset=" + offset)
-      .then(function (response) {
-        response.data.map((item) => {
-          let newListing = {};
-          newListing.id = item.id;
-          newListing.upc = parseInt(item.sku);
-          newListing.quantity = item.stock_quantity;
-          newListing.tags = item.tags;
-    
-          listings.push(newListing);
-        });
-      }).catch(function (error) {
+      .then(async function (response) {
+        let pages = response.headers["x-wp-totalpages"];
+        let listings = [];
+        for (let x = 0; x < pages; x++) {
+          let offset = x * 100;
+          await WooCommerce.get("products?per_page=100&offset=" + offset)
+            .then(function (response) {
+              response.data.map((item) => {
+                let newListing = {};
+                newListing.id = item.id;
+                newListing.upc = parseInt(item.sku);
+                newListing.quantity = item.stock_quantity;
+                newListing.tags = item.tags;
+
+                listings.push(newListing);
+              });
+            })
+            .catch(function (error) {
+              console.log(error);
+              reject(new Error(error));
+            });
+        }
+        resolve(listings);
+      })
+      .catch(function (error) {
         console.log(error);
         reject(new Error(error));
       });
-    }
-    resolve(listings);
-  })
-  .catch(function (error) {
-    console.log(error);
-    reject(new Error(error));
-  });
   });
 }
 
-let LipseyAuthToken = new Promise(function(resolve, reject){
-  const login_credentials = { "Email": process.env.LIPSEY_EMAIL, "Password": process.env.LIPSEY_PASSWORD };
-  axios.post('https://api.lipseys.com/api/Integration/Authentication/Login', login_credentials,{
-    headers: {
-      'Content-Type': 'application/json'
-    },
-  })
-  .then(function (response) {
-    resolve(response.data.token);
-  })
-  .catch(function (error) {
-    reject(new Error(error));
-  });
-});
-
-async function getLipseysInventory(){
-  return new Promise( async (resolve,reject) => {
-    let token = await LipseyAuthToken;
-    await axios.get('https://api.lipseys.com/api/Integration/Items/CatalogFeed',{
-    headers: {
-      Token: token
-    },
-    })
-    .then((response) => {
-      let products = [];
-
-      let inventory = response.data.data;
-
-      inventory.map((item) => {
-        let product = {};
-        product.upc = parseInt(item.upc);
-        product.price = item.price;
-        product.quantity = item.quantity;
-        product.map = item.retailMap;
-
-        products.push(product);
-      });
-
-      resolve(products);
+let LipseyAuthToken = new Promise(function (resolve, reject) {
+  const login_credentials = {
+    Email: process.env.LIPSEY_EMAIL,
+    Password: process.env.LIPSEY_PASSWORD,
+  };
+  axios
+    .post(
+      "https://api.lipseys.com/api/Integration/Authentication/Login",
+      login_credentials,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    )
+    .then(function (response) {
+      resolve(response.data.token);
     })
     .catch(function (error) {
-      console.log(error);
-      reject(error);
+      reject(new Error(error));
     });
+});
+
+async function getLipseysInventory() {
+  return new Promise(async (resolve, reject) => {
+    let token = await LipseyAuthToken;
+    await axios
+      .get("https://api.lipseys.com/api/Integration/Items/CatalogFeed", {
+        headers: {
+          Token: token,
+        },
+      })
+      .then((response) => {
+        let products = [];
+
+        let inventory = response.data.data;
+
+        inventory.map((item) => {
+          let product = {};
+          product.upc = parseInt(item.upc);
+          product.price = item.price;
+          product.quantity = item.quantity;
+          product.map = item.retailMap;
+
+          products.push(product);
+        });
+
+        resolve(products);
+      })
+      .catch(function (error) {
+        console.log(error);
+        reject(error);
+      });
   });
 }
 
-async function getDavidsonsInventoryFile(){
+async function getDavidsonsInventoryFile() {
   const client = new ftp.Client();
   client.ftp.verbose = false;
   try {
-      await client.access({
-        host: "ftp.davidsonsinventory.com",
-        user: process.env.DAVIDSONS_FTP_USERNAME,
-        password: process.env.DAVIDSONS_FTP_PASSWORD,
-        secure: false
-      });
-      await client.downloadTo("davidsons_quantity.csv", "davidsons_quantity.csv");
-      await client.downloadTo("davidsons_inventory.csv", "davidsons_inventory.csv");
-  }
-  catch(err) {
-      console.log(err);
+    await client.access({
+      host: "ftp.davidsonsinventory.com",
+      user: process.env.DAVIDSONS_FTP_USERNAME,
+      password: process.env.DAVIDSONS_FTP_PASSWORD,
+      secure: false,
+    });
+    await client.downloadTo("davidsons_quantity.csv", "davidsons_quantity.csv");
+    await client.downloadTo(
+      "davidsons_inventory.csv",
+      "davidsons_inventory.csv"
+    );
+  } catch (err) {
+    console.log(err);
   }
   console.log(chalk.bold.green("File downloaded."));
   client.close();
 }
 
-async function getDavidsonsInventory(){
-
+async function getDavidsonsInventory() {
   await getDavidsonsInventoryFile();
 
-  let DavidsonsInventory = csvToJson.fieldDelimiter(',').getJsonFromCsv('davidsons_quantity.csv');
+  let DavidsonsInventory = csvToJson
+    .fieldDelimiter(",")
+    .getJsonFromCsv("davidsons_quantity.csv");
 
   let products = [];
 
   DavidsonsInventory.map((item) => {
     let product = {};
-    product.upc = parseInt(item.UPC_Code.replace('#', ''));
-    product.quantity = parseInt(item.Quantity_NC.replace("+", "")) + parseInt(item.Quantity_AZ.replace("+", ""));
+    product.upc = parseInt(item.UPC_Code.replace("#", ""));
+    product.quantity =
+      parseInt(item.Quantity_NC.replace("+", "")) +
+      parseInt(item.Quantity_AZ.replace("+", ""));
 
     products.push(product);
   });
@@ -300,41 +203,51 @@ async function getDavidsonsInventory(){
   return products;
 }
 
-async function getRSRInventoryFile(){
+async function getRSRInventoryFile() {
   const client = new ftp.Client();
   client.ftp.verbose = false;
   try {
-      await client.access({
-          host: "rsrgroup.com",
-          user: process.env.RSRUSERNAME,
-          password: process.env.RSRPASSWORD,
-          secure: false
-      });
-      await client.downloadTo("rsrinventory.txt", "ftpdownloads/rsrinventory-new.txt");
+    await client.access({
+      host: "rsrgroup.com",
+      user: process.env.RSRUSERNAME,
+      password: process.env.RSRPASSWORD,
+      secure: false,
+    });
+    await client.downloadTo(
+      "rsrinventory.txt",
+      "ftpdownloads/rsrinventory-new.txt"
+    );
 
-      // Add headers to inventory file
-      const InventoryData = fs.readFileSync('rsrinventory.txt')
-      const Inventoryfd = fs.openSync('rsrinventory.txt', 'w+')
-      const InventoryHeaders = "stockNo;upc;description;dept;manufacturerId;retailPrice;rsrPrice;weight;quantity;model;mfgName;mfgPartNo;status;longDescription;imgName;AK;AL;AR;AZ;CA;CO;CT;DC;DE;FL;GA;HI;IA;ID;IL;IN;KS;KY;LA;MA;MD;ME;MI;MN;MO;MS;MT;NC;ND;NE;NH;NJ;NM;NV;NY;OH;OK;OR;PA;RI;SC;SD;TN;TX;UT;VA;VT;WA;WI;WV;WY;groundShipmentsOnly;adultSigRequired;noDropShip;date;retailMAP;imageDisclaimer;length;width;height;prop65;vendorApprovalRequired\n";
-      const InventoryInsert = Buffer.from(InventoryHeaders);
-      fs.writeSync(Inventoryfd, InventoryInsert, 0, InventoryInsert.length, 0)
-      fs.writeSync(Inventoryfd, InventoryData, 0, InventoryData.length, InventoryInsert.length)
-      fs.close(Inventoryfd, (err) => {
-        if (err) throw err;
-      });
-  }
-  catch(err) {
-      console.log(err);
+    // Add headers to inventory file
+    const InventoryData = fs.readFileSync("rsrinventory.txt");
+    const Inventoryfd = fs.openSync("rsrinventory.txt", "w+");
+    const InventoryHeaders =
+      "stockNo;upc;description;dept;manufacturerId;retailPrice;rsrPrice;weight;quantity;model;mfgName;mfgPartNo;status;longDescription;imgName;AK;AL;AR;AZ;CA;CO;CT;DC;DE;FL;GA;HI;IA;ID;IL;IN;KS;KY;LA;MA;MD;ME;MI;MN;MO;MS;MT;NC;ND;NE;NH;NJ;NM;NV;NY;OH;OK;OR;PA;RI;SC;SD;TN;TX;UT;VA;VT;WA;WI;WV;WY;groundShipmentsOnly;adultSigRequired;noDropShip;date;retailMAP;imageDisclaimer;length;width;height;prop65;vendorApprovalRequired\n";
+    const InventoryInsert = Buffer.from(InventoryHeaders);
+    fs.writeSync(Inventoryfd, InventoryInsert, 0, InventoryInsert.length, 0);
+    fs.writeSync(
+      Inventoryfd,
+      InventoryData,
+      0,
+      InventoryData.length,
+      InventoryInsert.length
+    );
+    fs.close(Inventoryfd, (err) => {
+      if (err) throw err;
+    });
+  } catch (err) {
+    console.log(err);
   }
   console.log(chalk.bold.green("File downloaded and headers added."));
   client.close();
 }
 
-async function getRSRInventory(){
-
+async function getRSRInventory() {
   await getRSRInventoryFile();
 
-  let RSRInventory = csvToJson.fieldDelimiter(';').getJsonFromCsv('rsrinventory.txt');
+  let RSRInventory = csvToJson
+    .fieldDelimiter(";")
+    .getJsonFromCsv("rsrinventory.txt");
 
   let products = [];
 
@@ -344,7 +257,8 @@ async function getRSRInventory(){
     product.price = Number(item.rsrPrice);
     product.quantity = parseInt(item.quantity);
     product.map = Number(item.retailMAP);
-    product.imageURL = 'https://img.rsrgroup.com/highres-pimages/' + item.imgName;
+    product.imageURL =
+      "https://img.rsrgroup.com/highres-pimages/" + item.imgName;
 
     products.push(product);
   });
@@ -352,42 +266,63 @@ async function getRSRInventory(){
   return products;
 }
 
-async function getSSInventory(){
-  return new Promise(async (resolve,reject) => {
-    await axios.get('http://webservices.theshootingwarehouse.com/smart/inventory.asmx/DailyItemUpdate?CustomerNumber='+process.env.SS_ACCOUNT_NUMBER+'&UserName='+process.env.SS_USERNAME+'&Password='+process.env.SS_PASSWORD+'&Source='+process.env.SS_SOURCE+'&LastUpdate=1/1/1990&LastItem=-1', {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        responseType: 'document',
-        Accept: 'application/xml'
-      }
-    }).then(async function (response) {
-      let decoded = decodeHtml(response.data);
-      let xml = xml2js(decoded, {compact:true, spaces: 2});
-      let products = xml.string.NewDataSet.Table;
-
-      let formatted = [];
-      for (let item of products) {
-        if(parseInt(item.ITYPE._text) == 1 || parseInt(item.ITYPE._text) == 2){
-          // Skip if undefined
-          if(item.IMODEL._text == undefined){continue}
-          if(item.MFGINO._text == undefined){continue}
-          //console.log(item);
-          let newItem = {};
-          newItem.upc = parseInt(item.ITUPC._text);
-          newItem.quantity = parseInt(item.QTYOH._text);
-          newItem.map = Number(item.MFPRC._text);
-
-          formatted.push(newItem);
+async function getSSInventory() {
+  return new Promise(async (resolve, reject) => {
+    await axios
+      .get(
+        "http://webservices.theshootingwarehouse.com/smart/inventory.asmx/DailyItemUpdate?CustomerNumber=" +
+          process.env.SS_ACCOUNT_NUMBER +
+          "&UserName=" +
+          process.env.SS_USERNAME +
+          "&Password=" +
+          process.env.SS_PASSWORD +
+          "&Source=" +
+          process.env.SS_SOURCE +
+          "&LastUpdate=1/1/1990&LastItem=-1",
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            responseType: "document",
+            Accept: "application/xml",
+          },
         }
-      }
-      resolve(formatted);
-    }).catch(function (error) {
-      reject(error);
-    });
+      )
+      .then(async function (response) {
+        let decoded = decodeHtml(response.data);
+        let xml = xml2js(decoded, { compact: true, spaces: 2 });
+        let products = xml.string.NewDataSet.Table;
+
+        let formatted = [];
+        for (let item of products) {
+          if (
+            parseInt(item.ITYPE._text) == 1 ||
+            parseInt(item.ITYPE._text) == 2
+          ) {
+            // Skip if undefined
+            if (item.IMODEL._text == undefined) {
+              continue;
+            }
+            if (item.MFGINO._text == undefined) {
+              continue;
+            }
+            //console.log(item);
+            let newItem = {};
+            newItem.upc = parseInt(item.ITUPC._text);
+            newItem.quantity = parseInt(item.QTYOH._text);
+            newItem.map = Number(item.MFPRC._text);
+
+            formatted.push(newItem);
+          }
+        }
+        resolve(formatted);
+      })
+      .catch(function (error) {
+        reject(error);
+      });
   });
 }
 
-async function checkAllListings(){
+async function checkAllListings() {
   // Get every SEC listing item No
   logProcess("Getting all SEC Guns listings");
   let listings = await getAllListings();
@@ -404,42 +339,74 @@ async function checkAllListings(){
 
   // Loop through every SEC Guns listing
   console.log(chalk.green.bold("Checking " + listings.length + " listings."));
-  for(let i = 0; i < listings.length; i++){
+  for (let i = 0; i < listings.length; i++) {
     let listing = listings[i];
 
-    if(!listing.tags.find(tag => tag.name == 'ap')){
+    if (!listing.tags.find((tag) => tag.name == "ap")) {
       continue;
     }
 
-    if(listing){
-      let lipseysResults = await LipseysInventory.find(item => item.upc == listing.upc);
-      let RSRResults = await RSRInventory.find(item => item.upc == listing.upc);
-      let davidsonsResults = await DavidsonsInventory.find(item => item.upc == listing.upc);
-      let SSResults = await SSInventory.find(item => item.upc == listing.upc);
-      if(lipseysResults == undefined){lipseysResults={};lipseysResults.quantity = 0}
-      if(RSRResults == undefined){RSRResults={};RSRResults.quantity = 0}
-      if(davidsonsResults == undefined){davidsonsResults={};davidsonsResults.quantity = 0}
-      if(SSResults == undefined){SSResults={};SSResults.quantity = 0}
+    if (listing) {
+      let lipseysResults = await LipseysInventory.find(
+        (item) => item.upc == listing.upc
+      );
+      let RSRResults = await RSRInventory.find(
+        (item) => item.upc == listing.upc
+      );
+      let davidsonsResults = await DavidsonsInventory.find(
+        (item) => item.upc == listing.upc
+      );
+      let SSResults = await SSInventory.find((item) => item.upc == listing.upc);
+      if (lipseysResults == undefined) {
+        lipseysResults = {};
+        lipseysResults.quantity = 0;
+      }
+      if (RSRResults == undefined) {
+        RSRResults = {};
+        RSRResults.quantity = 0;
+      }
+      if (davidsonsResults == undefined) {
+        davidsonsResults = {};
+        davidsonsResults.quantity = 0;
+      }
+      if (SSResults == undefined) {
+        SSResults = {};
+        SSResults.quantity = 0;
+      }
 
-      let totalAvailableQuantity = lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity + SSResults.quantity;
+      let totalAvailableQuantity =
+        lipseysResults.quantity +
+        RSRResults.quantity +
+        davidsonsResults.quantity +
+        SSResults.quantity;
 
-      if(listing.quantity > (totalAvailableQuantity - 10) && listing.quantity != 0){
-
+      if (
+        listing.quantity > totalAvailableQuantity - 10 &&
+        listing.quantity != 0
+      ) {
         // if quantity listed is less than quantity available minus 10, set quantity to 0
 
         const data = {
-          stock_quantity: 0
+          stock_quantity: 0,
         };
-        
-        await WooCommerce.put("products/"+listing.id, data)
-        .then((response) => {
-          console.log(chalk.bold.red("Listing QTY: " + listing.quantity + " | Vendor QTY: " + totalAvailableQuantity));
-          console.log(chalk.bold.yellow("[" + listing.upc + "] Item quantity set to 0."));
-        })
-        .catch((error) => {
-          console.log("error", error);
-        });
 
+        await WooCommerce.put("products/" + listing.id, data)
+          .then((response) => {
+            console.log(
+              chalk.bold.red(
+                "Listing QTY: " +
+                  listing.quantity +
+                  " | Vendor QTY: " +
+                  totalAvailableQuantity
+              )
+            );
+            console.log(
+              chalk.bold.yellow("[" + listing.upc + "] Item quantity set to 0.")
+            );
+          })
+          .catch((error) => {
+            console.log("error", error);
+          });
       }
     }
   }
@@ -447,20 +414,116 @@ async function checkAllListings(){
   return;
 }
 
-export {logProcess, checkAlreadyPosted, LipseyAuthToken, determineBrand, determineCaliber, client};
+async function updateQuantity(item) {
+  await WooCommerce.get("products/?sku=" + item.upc)
+    .then(async (response) => {
+      let quantityPosted = response.data[0].stock_quantity;
+      let productID = response.data[0].id;
+      if (quantityPosted == 0) {
+        // Setting Quantity
+        let quantity;
+
+        if (item.quantity >= 50) {
+          quantity = 10;
+        } else if (item.quantity < 50 && item.quantity >= 20) {
+          quantity = 5;
+        } else {
+          return;
+        }
+
+        // Update Quantity
+        const data = {
+          stock_quantity: quantity,
+        };
+
+        await WooCommerce.put("products/" + productID, data)
+          .then((response) => {
+            console.log(
+              chalk.green.bold("[" + item.upc + "] Item quantity updated.")
+            );
+          })
+          .catch((error) => {
+            console.log(error.response.data);
+          });
+      }
+    })
+    .catch((error) => {
+      console.log(error.response.data);
+    });
+}
+
+async function postAllItems(listings, limit) {
+  logProcess("Posting " + chalk.bold.green(listings.length) + " items on SEC");
+
+  let count = 0;
+  let countPosted = 0;
+
+  for (let item of listings) {
+    count++;
+
+    if (countPosted >= limit) {
+      return;
+    }
+
+    // Check if item is already posted
+    let alreadyPosted = await checkAlreadyPosted(item.upc);
+    if (alreadyPosted) {
+      console.log(
+        chalk.bold.blue.bgWhite(
+          " Lipseys Item " + count + " / " + listings.length + " "
+        ) + chalk.bold.yellow(" [" + item.upc + "] Item already posted.")
+      );
+      await updateQuantity(item);
+    } else {
+      await generateImages(item.imgURL, item.upc)
+        .then(async (imageLocation) => {
+          await postItem(item, imageLocation)
+            .catch((error) => console.log(error))
+            .then(() => {
+              countPosted++;
+              console.log(
+                chalk.bold.blue.bgWhite(
+                  " Lipseys Item " + count + " / " + listings.length + " "
+                ) +
+                  chalk.bold.green(
+                    " [" +
+                      item.upc +
+                      "] Item (" +
+                      item.manufacturer +
+                      " " +
+                      item.model +
+                      ") Posted"
+                  )
+              );
+            });
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    }
+  }
+  console.log(
+    chalk.bold.green(
+      "Lipseys postings complete. " + countPosted + " listings posted."
+    )
+  );
+  return countPosted;
+}
+
+export { logProcess, checkAlreadyPosted, LipseyAuthToken, client };
 
 // RUN PROCESS
 
-async function post(){
+async function post() {
   let lipseysInventory = await prepLipseysInventory();
-  
-  console.log(lipseysInventory);
+  let davidsonsInvetory = await prepDavidsonsInventory();
+
+  // Check for duplicates
+
+  await postAllItems(lipseysInventory);
 }
 
 // START
-post();
+//post();
+prepSSInventory();
 //checkAllListings();
-//postSSProducts();
-//postLipseysProducts();
-//postDavidsonsProducts();
-//postRSRProducts();

@@ -1,8 +1,8 @@
 node_modules
 tmp
 .env
-davidsons_inventory.csv
-DAV-inventory-with-MAP.txt
-davidsons_quantity.csv
-rsrinventory.txt
-attributes.txt
+files/davidsons_inventory.csv
+files/DAV-inventory-with-MAP.txt
+files/davidsons_quantity.csv
+files/rsrinventory.txt
+files/attributes.txt
