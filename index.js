@@ -8,7 +8,7 @@ import decodeHtml from "decode-html";
 import { xml2js } from "xml-js";
 import { prepLipseysInventory } from "./lipseys.js";
 import { prepDavidsonsInventory } from "./davidsons.js";
-import { postRSRProducts } from "./rsr.js";
+import { prepRSRInventory } from "./rsr.js";
 import { prepSSInventory } from "./sportssouth.js";
 import stringSimilarity from "string-similarity";
 import pkg from "@woocommerce/woocommerce-rest-api";
@@ -452,6 +452,21 @@ async function updateQuantity(item) {
     });
 }
 
+async function checkDuplicates(inventory) {
+  let duplicateCount = 0;
+  await inventory.map((item) => {
+    let match = inventory.find((x) => x.upc == item.upc && x.from != item.from);
+    if (match) {
+      duplicateCount++;
+      console.log(match.upc + " -> " + item.upc);
+      console.log(match.cost + " -> " + item.cost);
+      console.log(match.from + " -> " + item.from);
+    }
+  });
+  console.log(duplicateCount);
+  console.log(inventory.length - duplicateCount);
+}
+
 async function postAllItems(listings, limit) {
   logProcess("Posting " + chalk.bold.green(listings.length) + " items on SEC");
 
@@ -514,16 +529,42 @@ export { logProcess, checkAlreadyPosted, LipseyAuthToken, client };
 
 // RUN PROCESS
 
-async function post() {
-  let lipseysInventory = await prepLipseysInventory();
-  let davidsonsInvetory = await prepDavidsonsInventory();
+async function post(vendors) {
+  let inventory = [];
+
+  if (vendors.lip) {
+    let lipseysInventory = await prepLipseysInventory();
+    console.log(chalk.bold.green("------------- LIPSEYS -------------"));
+    console.log(lipseysInventory.length);
+    inventory.push(...lipseysInventory);
+  }
+  if (vendors.dav) {
+    let davidsonsInventory = await prepDavidsonsInventory();
+    console.log(chalk.bold.green("------------ DAVIDSONS ------------"));
+    console.log(davidsonsInventory.length);
+    inventory.push(...davidsonsInventory);
+  }
+  if (vendors.rsr) {
+    let rsrInventory = await prepRSRInventory();
+    console.log(chalk.bold.green("--------------- RSR ---------------"));
+    console.log(rsrInventory.length);
+    inventory.push(...rsrInventory);
+  }
+  if (vendors.ss) {
+    let ssInventory = await prepSSInventory();
+    console.log(chalk.bold.green("----------- SPORTS SOUTH ----------"));
+    console.log(ssInventory.length);
+    inventory.push(...ssInventory);
+  }
+
+  console.log(inventory.length + " total products before duplicate check");
 
   // Check for duplicates
+  await checkDuplicates(inventory);
 
-  await postAllItems(lipseysInventory);
+  //await postAllItems(lipseysInventory);
 }
 
 // START
-//post();
-prepSSInventory();
+post({ lip: true, dav: true, rsr: true, ss: true });
 //checkAllListings();

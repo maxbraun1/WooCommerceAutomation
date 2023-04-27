@@ -36,7 +36,6 @@ async function getInventoryFile() {
   } catch (err) {
     console.log(err);
   }
-  console.log(chalk.bold.green("Files downloaded."));
   client.close();
 }
 
@@ -160,7 +159,6 @@ async function getInventory() {
 }
 
 function filterInventory(inventory) {
-  logProcess("Filtering Results...");
   let lowestQuantityAllowed = 20;
   let lowestPriceAllowed = 150;
   let typesAllowed = [
@@ -191,7 +189,6 @@ function filterInventory(inventory) {
       filtered.push(item);
     }
   });
-  console.log(inventory.length + " to " + filtered.length);
   return filtered;
 }
 
@@ -215,6 +212,7 @@ async function normalizeInventory(dataset) {
     newItem.model = item.ModelSeries;
     newItem.categories = cat.categories;
     newItem.shippingClass = cat.shippingClass;
+    newItem.from = "DAV";
 
     newItem.extra = [
       ["Overall Length", item.OverallLength],
@@ -227,7 +225,6 @@ async function normalizeInventory(dataset) {
     normalizedInventory.push(newItem);
   });
 
-  console.log(normalizedInventory);
   return normalizedInventory;
 }
 
@@ -601,7 +598,6 @@ async function prepDavidsonsInventory() {
   let inventory = await getInventory();
   let filteredInventory = filterInventory(inventory);
   let normalizedInventory = normalizeInventory(filteredInventory);
-  console.log(normalizedInventory);
   return normalizedInventory;
 }
 

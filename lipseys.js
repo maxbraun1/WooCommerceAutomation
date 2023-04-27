@@ -31,7 +31,6 @@ dotenv.config();
 function getInventory() {
   return new Promise(async (resolve, reject) => {
     let token = await LipseyAuthToken;
-    logProcess("Retrieving Lipseys Inventory...");
     await axios
       .get("https://api.lipseys.com/api/Integration/Items/CatalogFeed", {
         headers: {
@@ -48,7 +47,6 @@ function getInventory() {
 }
 
 async function filterInventory(dataset) {
-  logProcess("Filtering Results...");
   let lowestQuantityAllowed = 20;
   let typesAllowed = ["Semi-Auto Pistol", "Rifle", "Revolver", "Shotgun"];
   let filtered = [];
@@ -64,10 +62,6 @@ async function filterInventory(dataset) {
       filtered.push(item);
     }
   });
-  logProcess(
-    chalk.green.bold(filtered.length) +
-      " products eligable to post (after filter)"
-  );
   return filtered;
 }
 
@@ -91,6 +85,7 @@ async function normalizeInventory(dataset) {
     newItem.model = item.model;
     newItem.categories = cat.categories;
     newItem.shippingClass = cat.shippingClass;
+    newItem.from = "LIP";
 
     newItem.extra = [
       ["Overall Length", item.overallLength],

@@ -35,11 +35,9 @@ async function getInventory() {
       .then(function (response) {
         let decoded = decodeHtml(response.data);
         let xml = xml2js(decoded, { compact: true, spaces: 2 });
-        //console.log(xml.string.NewDataSet.Table);
         resolve(xml.string.NewDataSet.Table);
       })
       .catch(function (error) {
-        //console.log(error);
         reject(error);
       });
   });
@@ -47,7 +45,6 @@ async function getInventory() {
 
 function organizeInventory(data) {
   return new Promise(async (resolve, reject) => {
-    console.log("Formatting " + data.length + " products");
     // Get Manufacturers
     let manufacturers = {};
     await axios
@@ -198,7 +195,6 @@ function organizeInventory(data) {
 }
 
 function filterInventory(inventory) {
-  logProcess("Filtering Results...");
   let lowestQuantityAllowed = 20;
   let lowestPriceAllowed = 150;
   let highestPriceAllowed = 2000;
@@ -216,7 +212,6 @@ function filterInventory(inventory) {
       filtered.push(item);
     }
   });
-  console.log(inventory.length + " to " + filtered.length);
   return filtered;
 }
 
@@ -240,13 +235,13 @@ async function normalizeInventory(dataset) {
     newItem.model = item.model;
     newItem.categories = cat.categories;
     newItem.shippingClass = cat.shippingClass;
+    newItem.from = "SS";
 
     newItem.extra = [["Series", item.series]];
 
     formattedInventory.push(newItem);
   });
 
-  console.log(formattedInventory);
   return formattedInventory;
 }
 
@@ -265,7 +260,7 @@ function findCategory(category, action) {
       break;
     case "RIFLES":
       shippingClass = "rifle-shotgun-pistol";
-      switch (item.action) {
+      switch (action) {
         case "Semi-Auto":
           categories = [{ id: 74 }, { id: 78 }, { id: 173 }];
           break;
@@ -606,7 +601,6 @@ async function prepSSInventory() {
   let inventory = await organizeInventory(unorganizedInventory);
   let filteredInventory = filterInventory(inventory);
   let normalizedInventory = await normalizeInventory(filteredInventory);
-  console.log(normalizedInventory);
   return normalizedInventory;
 }
 
