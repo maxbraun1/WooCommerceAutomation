@@ -35,9 +35,7 @@ await client.connect({
 });
 
 function logProcess(message, type) {
-  console.log(
-    "_________________________________________________________________________________"
-  );
+  console.log("_________________________________________________________________________________");
   switch (type) {
     case "good":
       console.log(chalk.green(message));
@@ -65,6 +63,7 @@ function checkAlreadyPosted(upc) {
       })
       .catch((error) => {
         console.log(error.response.data);
+        reject(error);
       });
   });
 }
@@ -109,15 +108,11 @@ let LipseyAuthToken = new Promise(function (resolve, reject) {
     Password: process.env.LIPSEY_PASSWORD,
   };
   axios
-    .post(
-      "https://api.lipseys.com/api/Integration/Authentication/Login",
-      login_credentials,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    )
+    .post("https://api.lipseys.com/api/Integration/Authentication/Login", login_credentials, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
     .then(function (response) {
       resolve(response.data.token);
     })
@@ -170,10 +165,7 @@ async function getDavidsonsInventoryFile() {
       secure: false,
     });
     await client.downloadTo("davidsons_quantity.csv", "davidsons_quantity.csv");
-    await client.downloadTo(
-      "davidsons_inventory.csv",
-      "davidsons_inventory.csv"
-    );
+    await client.downloadTo("davidsons_inventory.csv", "davidsons_inventory.csv");
   } catch (err) {
     console.log(err);
   }
@@ -184,18 +176,14 @@ async function getDavidsonsInventoryFile() {
 async function getDavidsonsInventory() {
   await getDavidsonsInventoryFile();
 
-  let DavidsonsInventory = csvToJson
-    .fieldDelimiter(",")
-    .getJsonFromCsv("davidsons_quantity.csv");
+  let DavidsonsInventory = csvToJson.fieldDelimiter(",").getJsonFromCsv("davidsons_quantity.csv");
 
   let products = [];
 
   DavidsonsInventory.map((item) => {
     let product = {};
     product.upc = parseInt(item.UPC_Code.replace("#", ""));
-    product.quantity =
-      parseInt(item.Quantity_NC.replace("+", "")) +
-      parseInt(item.Quantity_AZ.replace("+", ""));
+    product.quantity = parseInt(item.Quantity_NC.replace("+", "")) + parseInt(item.Quantity_AZ.replace("+", ""));
 
     products.push(product);
   });
@@ -213,10 +201,7 @@ async function getRSRInventoryFile() {
       password: process.env.RSRPASSWORD,
       secure: false,
     });
-    await client.downloadTo(
-      "rsrinventory.txt",
-      "ftpdownloads/rsrinventory-new.txt"
-    );
+    await client.downloadTo("rsrinventory.txt", "ftpdownloads/rsrinventory-new.txt");
 
     // Add headers to inventory file
     const InventoryData = fs.readFileSync("rsrinventory.txt");
@@ -225,13 +210,7 @@ async function getRSRInventoryFile() {
       "stockNo;upc;description;dept;manufacturerId;retailPrice;rsrPrice;weight;quantity;model;mfgName;mfgPartNo;status;longDescription;imgName;AK;AL;AR;AZ;CA;CO;CT;DC;DE;FL;GA;HI;IA;ID;IL;IN;KS;KY;LA;MA;MD;ME;MI;MN;MO;MS;MT;NC;ND;NE;NH;NJ;NM;NV;NY;OH;OK;OR;PA;RI;SC;SD;TN;TX;UT;VA;VT;WA;WI;WV;WY;groundShipmentsOnly;adultSigRequired;noDropShip;date;retailMAP;imageDisclaimer;length;width;height;prop65;vendorApprovalRequired\n";
     const InventoryInsert = Buffer.from(InventoryHeaders);
     fs.writeSync(Inventoryfd, InventoryInsert, 0, InventoryInsert.length, 0);
-    fs.writeSync(
-      Inventoryfd,
-      InventoryData,
-      0,
-      InventoryData.length,
-      InventoryInsert.length
-    );
+    fs.writeSync(Inventoryfd, InventoryData, 0, InventoryData.length, InventoryInsert.length);
     fs.close(Inventoryfd, (err) => {
       if (err) throw err;
     });
@@ -245,9 +224,7 @@ async function getRSRInventoryFile() {
 async function getRSRInventory() {
   await getRSRInventoryFile();
 
-  let RSRInventory = csvToJson
-    .fieldDelimiter(";")
-    .getJsonFromCsv("rsrinventory.txt");
+  let RSRInventory = csvToJson.fieldDelimiter(";").getJsonFromCsv("rsrinventory.txt");
 
   let products = [];
 
@@ -257,8 +234,7 @@ async function getRSRInventory() {
     product.price = Number(item.rsrPrice);
     product.quantity = parseInt(item.quantity);
     product.map = Number(item.retailMAP);
-    product.imageURL =
-      "https://img.rsrgroup.com/highres-pimages/" + item.imgName;
+    product.imageURL = "https://img.rsrgroup.com/highres-pimages/" + item.imgName;
 
     products.push(product);
   });
@@ -294,10 +270,7 @@ async function getSSInventory() {
 
         let formatted = [];
         for (let item of products) {
-          if (
-            parseInt(item.ITYPE._text) == 1 ||
-            parseInt(item.ITYPE._text) == 2
-          ) {
+          if (parseInt(item.ITYPE._text) == 1 || parseInt(item.ITYPE._text) == 2) {
             // Skip if undefined
             if (item.IMODEL._text == undefined) {
               continue;
@@ -347,15 +320,9 @@ async function checkAllListings() {
     }
 
     if (listing) {
-      let lipseysResults = await LipseysInventory.find(
-        (item) => item.upc == listing.upc
-      );
-      let RSRResults = await RSRInventory.find(
-        (item) => item.upc == listing.upc
-      );
-      let davidsonsResults = await DavidsonsInventory.find(
-        (item) => item.upc == listing.upc
-      );
+      let lipseysResults = await LipseysInventory.find((item) => item.upc == listing.upc);
+      let RSRResults = await RSRInventory.find((item) => item.upc == listing.upc);
+      let davidsonsResults = await DavidsonsInventory.find((item) => item.upc == listing.upc);
       let SSResults = await SSInventory.find((item) => item.upc == listing.upc);
       if (lipseysResults == undefined) {
         lipseysResults = {};
@@ -375,15 +342,9 @@ async function checkAllListings() {
       }
 
       let totalAvailableQuantity =
-        lipseysResults.quantity +
-        RSRResults.quantity +
-        davidsonsResults.quantity +
-        SSResults.quantity;
+        lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity + SSResults.quantity;
 
-      if (
-        listing.quantity > totalAvailableQuantity - 10 &&
-        listing.quantity != 0
-      ) {
+      if (listing.quantity > totalAvailableQuantity - 10 && listing.quantity != 0) {
         // if quantity listed is less than quantity available minus 10, set quantity to 0
 
         const data = {
@@ -393,16 +354,9 @@ async function checkAllListings() {
         await WooCommerce.put("products/" + listing.id, data)
           .then((response) => {
             console.log(
-              chalk.bold.red(
-                "Listing QTY: " +
-                  listing.quantity +
-                  " | Vendor QTY: " +
-                  totalAvailableQuantity
-              )
+              chalk.bold.red("Listing QTY: " + listing.quantity + " | Vendor QTY: " + totalAvailableQuantity)
             );
-            console.log(
-              chalk.bold.yellow("[" + listing.upc + "] Item quantity set to 0.")
-            );
+            console.log(chalk.bold.yellow("[" + listing.upc + "] Item quantity set to 0."));
           })
           .catch((error) => {
             console.log("error", error);
@@ -438,9 +392,7 @@ async function updateQuantity(item) {
 
         await WooCommerce.put("products/" + productID, data)
           .then((response) => {
-            console.log(
-              chalk.green.bold("[" + item.upc + "] Item quantity updated.")
-            );
+            console.log(chalk.green.bold("[" + item.upc + "] Item quantity updated."));
           })
           .catch((error) => {
             console.log(error.response.data);
@@ -454,17 +406,24 @@ async function updateQuantity(item) {
 
 async function checkDuplicates(inventory) {
   let duplicateCount = 0;
-  await inventory.map((item) => {
-    let match = inventory.find((x) => x.upc == item.upc && x.from != item.from);
-    if (match) {
-      duplicateCount++;
-      console.log(match.upc + " -> " + item.upc);
-      console.log(match.cost + " -> " + item.cost);
-      console.log(match.from + " -> " + item.from);
+  await inventory.map((item, index) => {
+    let matches = inventory.filter((x) => x.upc == item.upc && x.from != item.from);
+    if (matches.length > 0) {
+      let highestCost = item.cost;
+      let quantity = item.quantity;
+      matches.map((match, matchIndex) => {
+        quantity = quantity + match.quantity;
+        if (match.cost > highestCost) {
+          highestCost = match.cost;
+        }
+        inventory.splice(inventory.indexOf(match), 1);
+      });
+      item.cost = highestCost;
+      item.quantity = quantity;
     }
   });
-  console.log(duplicateCount);
-  console.log(inventory.length - duplicateCount);
+  console.log(inventory.length);
+  return inventory;
 }
 
 async function postAllItems(listings, limit) {
@@ -484,9 +443,8 @@ async function postAllItems(listings, limit) {
     let alreadyPosted = await checkAlreadyPosted(item.upc);
     if (alreadyPosted) {
       console.log(
-        chalk.bold.blue.bgWhite(
-          " Lipseys Item " + count + " / " + listings.length + " "
-        ) + chalk.bold.yellow(" [" + item.upc + "] Item already posted.")
+        chalk.bold.blue.bgWhite(" Item " + count + " / " + listings.length + " ") +
+          chalk.bold.yellow(" [" + item.upc + "] Item already posted.")
       );
       await updateQuantity(item);
     } else {
@@ -497,18 +455,8 @@ async function postAllItems(listings, limit) {
             .then(() => {
               countPosted++;
               console.log(
-                chalk.bold.blue.bgWhite(
-                  " Lipseys Item " + count + " / " + listings.length + " "
-                ) +
-                  chalk.bold.green(
-                    " [" +
-                      item.upc +
-                      "] Item (" +
-                      item.manufacturer +
-                      " " +
-                      item.model +
-                      ") Posted"
-                  )
+                chalk.bold.blue.bgWhite(" Item " + count + " / " + listings.length + " ") +
+                  chalk.bold.green(" [" + item.upc + "] Item (" + item.manufacturer + " " + item.model + ") Posted")
               );
             });
         })
@@ -517,11 +465,7 @@ async function postAllItems(listings, limit) {
         });
     }
   }
-  console.log(
-    chalk.bold.green(
-      "Lipseys postings complete. " + countPosted + " listings posted."
-    )
-  );
+  console.log(chalk.bold.green("Posting complete. " + countPosted + " listings posted."));
   return countPosted;
 }
 
@@ -560,9 +504,9 @@ async function post(vendors) {
   console.log(inventory.length + " total products before duplicate check");
 
   // Check for duplicates
-  await checkDuplicates(inventory);
+  inventory = await checkDuplicates(inventory);
 
-  //await postAllItems(lipseysInventory);
+  await postAllItems(inventory);
 }
 
 // START
