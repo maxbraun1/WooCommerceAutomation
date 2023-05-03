@@ -2,13 +2,7 @@ import { logProcess } from "./index.js";
 import descriptionGenerator from "./util/descriptionGenerator.js";
 import * as dotenv from "dotenv";
 import chalk from "chalk";
-import {
-  generateAttributes,
-  generatePrices,
-  generateQuantity,
-  generateTitle,
-  determineBrand,
-} from "./util/util.js";
+import { generateAttributes, generatePrices, generateQuantity, generateTitle, determineBrand } from "./util/util.js";
 import pkg from "@woocommerce/woocommerce-rest-api";
 const WooCommerceRestApi = pkg.default;
 
@@ -52,6 +46,7 @@ function postItem(item, imageLocation) {
           { name: item.model },
           { name: item.action },
           { name: "ap" },
+          { name: item.from },
         ],
         images: [
           {
@@ -75,26 +70,16 @@ function postItem(item, imageLocation) {
           },
           {
             key: "_yoast_wpseo_metadesc",
-            value:
-              item.manufacturer +
-              " " +
-              item.model +
-              " " +
-              item.upc +
-              " for sale by SEC Guns. " +
-              item.description,
+            value: item.manufacturer + " " + item.model + " " + item.upc + " for sale by SEC Guns. " + item.desc,
           },
         ],
       };
 
-      console.log(data);
-
       await WooCommerce.post("products", data)
         .then(function (response) {
-          console.log(
-            chalk.green.bold("Product posted with ID " + response.data.id)
-          );
-          console.log(response.data.attributes[0].options);
+          if (!response.data.id) {
+            console.log(response);
+          }
         })
         .catch(function (error) {
           console.log(error);

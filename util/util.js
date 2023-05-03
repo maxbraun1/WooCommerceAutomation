@@ -2,6 +2,7 @@ import axios from "axios";
 import * as dotenv from "dotenv";
 import stringSimilarity from "string-similarity";
 import pkg from "@woocommerce/woocommerce-rest-api";
+import chalk from "chalk";
 const WooCommerceRestApi = pkg.default;
 
 dotenv.config();
@@ -84,14 +85,7 @@ function generateQuantity(item) {
 }
 
 function generateTitle(item) {
-  var title =
-    item.manufacturer +
-    " " +
-    item.model +
-    " " +
-    item.caliber +
-    " " +
-    item.capacity;
+  var title = item.manufacturer + " " + item.model + " " + item.caliber + " " + item.capacity;
 
   title = Array.from(new Set(title.split(" "))).toString();
   title = title.replaceAll(",", " ");
@@ -119,16 +113,12 @@ async function getBrands() {
       for (let x = 0; x < pages; x++) {
         let offset = x * 100;
         await axios
-          .get(
-            "https://secguns.com/wp-json/wc/v2/products/brands?per_page=100&offset=" +
-              offset,
-            {
-              auth: {
-                username: process.env.SEC_WORDPRESS_USER,
-                password: process.env.SEC_WORDPRESS_PASS,
-              },
-            }
-          )
+          .get("https://secguns.com/wp-json/wc/v2/products/brands?per_page=100&offset=" + offset, {
+            auth: {
+              username: process.env.SEC_WORDPRESS_USER,
+              password: process.env.SEC_WORDPRESS_PASS,
+            },
+          })
           .then(async function (response) {
             await response.data.map((item) => {
               let newBrand = {};
@@ -156,19 +146,9 @@ async function determineBrand(brand) {
     return item.name.toLowerCase().replace("&amp;", "&");
   });
   let match = stringSimilarity.findBestMatch(brand.toLowerCase(), brandNames);
-  let bestMatch = brands.find(
-    (item) =>
-      item.name.toLowerCase().replace("&amp;", "&") === match.bestMatch.target
-  );
+  let bestMatch = brands.find((item) => item.name.toLowerCase().replace("&amp;", "&") === match.bestMatch.target);
 
-  console.log(
-    "given '" +
-      brand +
-      "' found best match '" +
-      bestMatch.name +
-      "' with rating: " +
-      match.bestMatch.rating
-  );
+  console.log("given '" + brand + "' found best match '" + bestMatch.name + "' with rating: " + match.bestMatch.rating);
   if (match.bestMatch.rating >= 0.85) {
     return bestMatch.id;
   }
@@ -179,14 +159,12 @@ async function determineBrand(brand) {
 
   return await WooCommerce.post("products/brands", data)
     .then((response) => {
-      console.log(
-        chalk.bold.yellow("New Brand created: " + response.data.name)
-      );
+      console.log(chalk.bold.yellow("New brand created: " + response.data.name));
       brands.push({ name: brand, id: response.data.id });
       return response.data.id;
     })
     .catch((error) => {
-      console.log(error.data);
+      console.log(error);
       return null;
     });
 }
@@ -200,9 +178,7 @@ let calibers = new Promise(async function (resolve, reject) {
       let caliberList = [];
       for (let x = 0; x < pages; x++) {
         let offset = x * 100;
-        await WooCommerce.get(
-          "products/attributes/10/terms?per_page=100&offset=" + offset
-        )
+        await WooCommerce.get("products/attributes/10/terms?per_page=100&offset=" + offset)
           .then(function (response) {
             response.data.map((item) => {
               let newCaliber = {};
@@ -234,18 +210,10 @@ async function determineCaliber(caliber) {
       return item.name;
     });
     let match = stringSimilarity.findBestMatch(caliber, caliberNames);
-    let bestMatch = caliberList.find(
-      (item) => item.name === match.bestMatch.target
-    );
+    let bestMatch = caliberList.find((item) => item.name === match.bestMatch.target);
     if (match.bestMatch.rating >= 0.85) {
       console.log(
-        "Given '" +
-          caliber +
-          "', found '" +
-          bestMatch.name +
-          "' with " +
-          match.bestMatch.rating * 100 +
-          "% similarity."
+        "Given '" + caliber + "', found '" + bestMatch.name + "' with " + match.bestMatch.rating * 100 + "% similarity."
       );
       return bestMatch.name;
     } else {
@@ -254,11 +222,4 @@ async function determineCaliber(caliber) {
   }
 }
 
-export {
-  generateAttributes,
-  generatePrices,
-  generateQuantity,
-  generateTitle,
-  determineBrand,
-  determineCaliber,
-};
+export { generateAttributes, generatePrices, generateQuantity, generateTitle, determineBrand, determineCaliber };

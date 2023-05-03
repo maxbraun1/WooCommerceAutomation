@@ -1,18 +1,11 @@
-import axios from "axios";
-import fs from "fs";
 import * as dotenv from "dotenv";
 import chalk from "chalk";
-import * as ftp from "basic-ftp";
-import csvToJson from "convert-csv-to-json";
-import decodeHtml from "decode-html";
-import { xml2js } from "xml-js";
-import { prepLipseysInventory } from "./lipseys.js";
-import { prepDavidsonsInventory } from "./davidsons.js";
-import { prepRSRInventory } from "./rsr.js";
-import { prepSSInventory } from "./sportssouth.js";
-import stringSimilarity from "string-similarity";
+import { prepLipseysInventory, checkLipseysInventory } from "./lipseys.js";
+import { prepDavidsonsInventory, checkDavidsonsInventory } from "./davidsons.js";
+import { prepRSRInventory, checkRSRInventory } from "./rsr.js";
+import { prepSSInventory, checkSSInventory } from "./sportssouth.js";
 import pkg from "@woocommerce/woocommerce-rest-api";
-import SFTPClient from "ssh2-sftp-client";
+
 import { postItem } from "./post.js";
 import { generateImages } from "./imageGenerator.js";
 const WooCommerceRestApi = pkg.default;
@@ -24,14 +17,6 @@ const WooCommerce = new WooCommerceRestApi({
   consumerKey: process.env.SEC_KEY,
   consumerSecret: process.env.SEC_SECRET,
   version: "wc/v3",
-});
-
-let client = new SFTPClient();
-await client.connect({
-  host: "secgunsdev.sftp.wpengine.com",
-  port: "2222",
-  user: process.env.SEC_FTP_USER,
-  password: process.env.SEC_FTP_PASS,
 });
 
 function logProcess(message, type) {
@@ -102,199 +87,6 @@ function getAllListings() {
   });
 }
 
-let LipseyAuthToken = new Promise(function (resolve, reject) {
-  const login_credentials = {
-    Email: process.env.LIPSEY_EMAIL,
-    Password: process.env.LIPSEY_PASSWORD,
-  };
-  axios
-    .post("https://api.lipseys.com/api/Integration/Authentication/Login", login_credentials, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-    .then(function (response) {
-      resolve(response.data.token);
-    })
-    .catch(function (error) {
-      reject(new Error(error));
-    });
-});
-
-async function getLipseysInventory() {
-  return new Promise(async (resolve, reject) => {
-    let token = await LipseyAuthToken;
-    await axios
-      .get("https://api.lipseys.com/api/Integration/Items/CatalogFeed", {
-        headers: {
-          Token: token,
-        },
-      })
-      .then((response) => {
-        let products = [];
-
-        let inventory = response.data.data;
-
-        inventory.map((item) => {
-          let product = {};
-          product.upc = parseInt(item.upc);
-          product.price = item.price;
-          product.quantity = item.quantity;
-          product.map = item.retailMap;
-
-          products.push(product);
-        });
-
-        resolve(products);
-      })
-      .catch(function (error) {
-        console.log(error);
-        reject(error);
-      });
-  });
-}
-
-async function getDavidsonsInventoryFile() {
-  const client = new ftp.Client();
-  client.ftp.verbose = false;
-  try {
-    await client.access({
-      host: "ftp.davidsonsinventory.com",
-      user: process.env.DAVIDSONS_FTP_USERNAME,
-      password: process.env.DAVIDSONS_FTP_PASSWORD,
-      secure: false,
-    });
-    await client.downloadTo("davidsons_quantity.csv", "davidsons_quantity.csv");
-    await client.downloadTo("davidsons_inventory.csv", "davidsons_inventory.csv");
-  } catch (err) {
-    console.log(err);
-  }
-  console.log(chalk.bold.green("File downloaded."));
-  client.close();
-}
-
-async function getDavidsonsInventory() {
-  await getDavidsonsInventoryFile();
-
-  let DavidsonsInventory = csvToJson.fieldDelimiter(",").getJsonFromCsv("davidsons_quantity.csv");
-
-  let products = [];
-
-  DavidsonsInventory.map((item) => {
-    let product = {};
-    product.upc = parseInt(item.UPC_Code.replace("#", ""));
-    product.quantity = parseInt(item.Quantity_NC.replace("+", "")) + parseInt(item.Quantity_AZ.replace("+", ""));
-
-    products.push(product);
-  });
-
-  return products;
-}
-
-async function getRSRInventoryFile() {
-  const client = new ftp.Client();
-  client.ftp.verbose = false;
-  try {
-    await client.access({
-      host: "rsrgroup.com",
-      user: process.env.RSRUSERNAME,
-      password: process.env.RSRPASSWORD,
-      secure: false,
-    });
-    await client.downloadTo("rsrinventory.txt", "ftpdownloads/rsrinventory-new.txt");
-
-    // Add headers to inventory file
-    const InventoryData = fs.readFileSync("rsrinventory.txt");
-    const Inventoryfd = fs.openSync("rsrinventory.txt", "w+");
-    const InventoryHeaders =
-      "stockNo;upc;description;dept;manufacturerId;retailPrice;rsrPrice;weight;quantity;model;mfgName;mfgPartNo;status;longDescription;imgName;AK;AL;AR;AZ;CA;CO;CT;DC;DE;FL;GA;HI;IA;ID;IL;IN;KS;KY;LA;MA;MD;ME;MI;MN;MO;MS;MT;NC;ND;NE;NH;NJ;NM;NV;NY;OH;OK;OR;PA;RI;SC;SD;TN;TX;UT;VA;VT;WA;WI;WV;WY;groundShipmentsOnly;adultSigRequired;noDropShip;date;retailMAP;imageDisclaimer;length;width;height;prop65;vendorApprovalRequired\n";
-    const InventoryInsert = Buffer.from(InventoryHeaders);
-    fs.writeSync(Inventoryfd, InventoryInsert, 0, InventoryInsert.length, 0);
-    fs.writeSync(Inventoryfd, InventoryData, 0, InventoryData.length, InventoryInsert.length);
-    fs.close(Inventoryfd, (err) => {
-      if (err) throw err;
-    });
-  } catch (err) {
-    console.log(err);
-  }
-  console.log(chalk.bold.green("File downloaded and headers added."));
-  client.close();
-}
-
-async function getRSRInventory() {
-  await getRSRInventoryFile();
-
-  let RSRInventory = csvToJson.fieldDelimiter(";").getJsonFromCsv("rsrinventory.txt");
-
-  let products = [];
-
-  RSRInventory.map((item) => {
-    let product = {};
-    product.upc = parseInt(item.upc);
-    product.price = Number(item.rsrPrice);
-    product.quantity = parseInt(item.quantity);
-    product.map = Number(item.retailMAP);
-    product.imageURL = "https://img.rsrgroup.com/highres-pimages/" + item.imgName;
-
-    products.push(product);
-  });
-
-  return products;
-}
-
-async function getSSInventory() {
-  return new Promise(async (resolve, reject) => {
-    await axios
-      .get(
-        "http://webservices.theshootingwarehouse.com/smart/inventory.asmx/DailyItemUpdate?CustomerNumber=" +
-          process.env.SS_ACCOUNT_NUMBER +
-          "&UserName=" +
-          process.env.SS_USERNAME +
-          "&Password=" +
-          process.env.SS_PASSWORD +
-          "&Source=" +
-          process.env.SS_SOURCE +
-          "&LastUpdate=1/1/1990&LastItem=-1",
-        {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            responseType: "document",
-            Accept: "application/xml",
-          },
-        }
-      )
-      .then(async function (response) {
-        let decoded = decodeHtml(response.data);
-        let xml = xml2js(decoded, { compact: true, spaces: 2 });
-        let products = xml.string.NewDataSet.Table;
-
-        let formatted = [];
-        for (let item of products) {
-          if (parseInt(item.ITYPE._text) == 1 || parseInt(item.ITYPE._text) == 2) {
-            // Skip if undefined
-            if (item.IMODEL._text == undefined) {
-              continue;
-            }
-            if (item.MFGINO._text == undefined) {
-              continue;
-            }
-            //console.log(item);
-            let newItem = {};
-            newItem.upc = parseInt(item.ITUPC._text);
-            newItem.quantity = parseInt(item.QTYOH._text);
-            newItem.map = Number(item.MFPRC._text);
-
-            formatted.push(newItem);
-          }
-        }
-        resolve(formatted);
-      })
-      .catch(function (error) {
-        reject(error);
-      });
-  });
-}
-
 async function checkAllListings() {
   // Get every SEC listing item No
   logProcess("Getting all SEC Guns listings");
@@ -302,13 +94,13 @@ async function checkAllListings() {
 
   // Get every listing from Lipseys, Davidsons, RSR, and SportsSouth
   logProcess("Getting Lipseys Inventory");
-  let LipseysInventory = await getLipseysInventory();
+  let LipseysInventory = await checkLipseysInventory();
   logProcess("Getting Davidsons Inventory");
-  let DavidsonsInventory = await getDavidsonsInventory();
+  let DavidsonsInventory = await checkDavidsonsInventory();
   logProcess("Getting RSR Inventory");
-  let RSRInventory = await getRSRInventory();
+  let RSRInventory = await checkRSRInventory();
   logProcess("Getting Sports South Inventory");
-  let SSInventory = await getSSInventory();
+  let SSInventory = await checkSSInventory();
 
   // Loop through every SEC Guns listing
   console.log(chalk.green.bold("Checking " + listings.length + " listings."));
@@ -324,27 +116,23 @@ async function checkAllListings() {
       let RSRResults = await RSRInventory.find((item) => item.upc == listing.upc);
       let davidsonsResults = await DavidsonsInventory.find((item) => item.upc == listing.upc);
       let SSResults = await SSInventory.find((item) => item.upc == listing.upc);
-      if (lipseysResults == undefined) {
-        lipseysResults = {};
-        lipseysResults.quantity = 0;
+
+      let availableQTY = 0;
+
+      if (lipseysResults) {
+        availableQTY = availableQTY + lipseysResults.quantity;
       }
-      if (RSRResults == undefined) {
-        RSRResults = {};
-        RSRResults.quantity = 0;
+      if (RSRResults) {
+        availableQTY = availableQTY + RSRResults.quantity;
       }
-      if (davidsonsResults == undefined) {
-        davidsonsResults = {};
-        davidsonsResults.quantity = 0;
+      if (davidsonsResults) {
+        availableQTY = availableQTY + davidsonsResults.quantity;
       }
-      if (SSResults == undefined) {
-        SSResults = {};
-        SSResults.quantity = 0;
+      if (SSResults) {
+        availableQTY = availableQTY + SSResults.quantity;
       }
 
-      let totalAvailableQuantity =
-        lipseysResults.quantity + RSRResults.quantity + davidsonsResults.quantity + SSResults.quantity;
-
-      if (listing.quantity > totalAvailableQuantity - 10 && listing.quantity != 0) {
+      if (listing.quantity > availableQTY - 10 && listing.quantity != 0) {
         // if quantity listed is less than quantity available minus 10, set quantity to 0
 
         const data = {
@@ -353,9 +141,7 @@ async function checkAllListings() {
 
         await WooCommerce.put("products/" + listing.id, data)
           .then((response) => {
-            console.log(
-              chalk.bold.red("Listing QTY: " + listing.quantity + " | Vendor QTY: " + totalAvailableQuantity)
-            );
+            console.log(chalk.bold.red("Listing QTY: " + listing.quantity + " | Vendor QTY: " + availableQTY));
             console.log(chalk.bold.yellow("[" + listing.upc + "] Item quantity set to 0."));
           })
           .catch((error) => {
@@ -406,12 +192,13 @@ async function updateQuantity(item) {
 
 async function checkDuplicates(inventory) {
   let duplicateCount = 0;
-  await inventory.map((item, index) => {
+  let newInventory = await inventory.map((item) => {
     let matches = inventory.filter((x) => x.upc == item.upc && x.from != item.from);
     if (matches.length > 0) {
+      duplicateCount = duplicateCount + matches.length;
       let highestCost = item.cost;
       let quantity = item.quantity;
-      matches.map((match, matchIndex) => {
+      matches.map((match) => {
         quantity = quantity + match.quantity;
         if (match.cost > highestCost) {
           highestCost = match.cost;
@@ -421,9 +208,10 @@ async function checkDuplicates(inventory) {
       item.cost = highestCost;
       item.quantity = quantity;
     }
+    return item;
   });
-  console.log(inventory.length);
-  return inventory;
+  console.log(chalk.bold.yellow("Found " + duplicateCount + " duplicates."));
+  return newInventory;
 }
 
 async function postAllItems(listings, limit) {
@@ -456,7 +244,9 @@ async function postAllItems(listings, limit) {
               countPosted++;
               console.log(
                 chalk.bold.blue.bgWhite(" Item " + count + " / " + listings.length + " ") +
-                  chalk.bold.green(" [" + item.upc + "] Item (" + item.manufacturer + " " + item.model + ") Posted")
+                  chalk.bold.green(
+                    " [" + item.upc + "] " + item.from + " Item (" + item.manufacturer + " " + item.model + ") Posted"
+                  )
               );
             });
         })
@@ -468,10 +258,6 @@ async function postAllItems(listings, limit) {
   console.log(chalk.bold.green("Posting complete. " + countPosted + " listings posted."));
   return countPosted;
 }
-
-export { logProcess, checkAlreadyPosted, LipseyAuthToken, client };
-
-// RUN PROCESS
 
 async function post(vendors) {
   let inventory = [];
@@ -510,5 +296,7 @@ async function post(vendors) {
 }
 
 // START
-post({ lip: true, dav: true, rsr: true, ss: true });
+post({ lip: false, dav: false, rsr: false, ss: true });
 //checkAllListings();
+
+export { logProcess };
