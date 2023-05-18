@@ -102,6 +102,16 @@ async function checkAllListings() {
   logProcess("Getting Sports South Inventory");
   let SSInventory = await checkSSInventory();
 
+  if (
+    LipseysInventory.length < 100 ||
+    DavidsonsInventory.length < 100 ||
+    RSRInventory.length < 100 ||
+    SSInventory.length < 100
+  ) {
+    console.log("Fetching of one or more vendors failed.");
+    return;
+  }
+
   // Loop through every SEC Guns listing
   console.log(chalk.green.bold("Checking " + listings.length + " listings."));
   for (let i = 0; i < listings.length; i++) {
@@ -296,7 +306,7 @@ async function post(vendors) {
 }
 
 // START
-post({ lip: false, dav: false, rsr: false, ss: true });
-//checkAllListings();
+//post({ lip: false, dav: false, rsr: false, ss: true });
+checkAllListings();
 
 export { logProcess };
